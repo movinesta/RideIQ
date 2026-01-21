@@ -28,6 +28,17 @@ type PackageRow = {
   updated_at: string;
 };
 
+type GiftCodeRow = {
+  code: string;
+  amount_iqd: number;
+  memo: string | null;
+  created_by: string | null;
+  created_at: string;
+  redeemed_by: string | null;
+  redeemed_at: string | null;
+  redeemed_entry_id: number | null;
+};
+
 type TopupIntentRow = {
   id: string;
   user_id: string;
@@ -141,6 +152,16 @@ async function fetchPackages(): Promise<PackageRow[]> {
   return (data as unknown as PackageRow[]) ?? [];
 }
 
+async function fetchGiftCodes(): Promise<GiftCodeRow[]> {
+  const { data, error } = await supabase
+    .from('gift_codes')
+    .select('code,amount_iqd,memo,created_by,created_at,redeemed_by,redeemed_at,redeemed_entry_id')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return (data as unknown as GiftCodeRow[]) ?? [];
+}
+
 async function fetchProviderEvents(): Promise<ProviderEventRow[]> {
   const { data, error } = await supabase
     .from('provider_events')
@@ -203,6 +224,7 @@ export default function AdminPaymentsPage() {
 
   const providersQ = useQuery({ queryKey: ['admin_payment_providers'], queryFn: fetchProviders, enabled: adminQ.data === true });
   const packagesQ = useQuery({ queryKey: ['admin_topup_packages'], queryFn: fetchPackages, enabled: adminQ.data === true });
+  const giftCodesQ = useQuery({ queryKey: ['admin_gift_codes'], queryFn: fetchGiftCodes, enabled: adminQ.data === true });
   const eventsQ = useQuery({ queryKey: ['admin_provider_events'], queryFn: fetchProviderEvents, enabled: adminQ.data === true });
 
   const [topupsPage, setTopupsPage] = React.useState(0);
@@ -210,6 +232,10 @@ export default function AdminPaymentsPage() {
   const [topupsStatus, setTopupsStatus] = React.useState('all');
   const [topupsProvider, setTopupsProvider] = React.useState('all');
   const [topupsUserId, setTopupsUserId] = React.useState('');
+
+  const [giftAmount, setGiftAmount] = React.useState('');
+  const [giftCode, setGiftCode] = React.useState('');
+  const [giftMemo, setGiftMemo] = React.useState('');
 
   const topupsQ = useQuery({
     queryKey: ['admin_topups', { topupsPage, topupsPageSize, topupsStatus, topupsProvider, topupsUserId }],
@@ -235,6 +261,7 @@ export default function AdminPaymentsPage() {
 
   const providers = providersQ.data ?? [];
   const packages = packagesQ.data ?? [];
+  const giftCodes = giftCodesQ.data ?? [];
   const events = eventsQ.data ?? [];
   const withdrawPolicy = withdrawPolicyQ.data ?? null;
   const withdrawMethods = withdrawMethodsQ.data ?? [];
@@ -252,6 +279,37 @@ export default function AdminPaymentsPage() {
   async function createPackage(pkg: Pick<PackageRow, 'label' | 'amount_iqd' | 'bonus_iqd' | 'active' | 'sort_order'>) {
     const { error } = await supabase.from('topup_packages').insert(pkg);
     if (error) throw error;
+  }
+
+  async function createGiftCode() {
+    try {
+      const amount = Number(giftAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        setToast('Enter a valid amount to create a gift code.');
+        setTimeout(() => setToast(null), 2000);
+        return;
+      }
+      const { data, error } = await supabase.rpc('admin_create_gift_code', {
+        p_amount_iqd: amount,
+        p_code: giftCode.trim() ? giftCode.trim() : null,
+        p_memo: giftMemo.trim() ? giftMemo.trim() : null,
+      });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      await qc.invalidateQueries({ queryKey: ['admin_gift_codes'] });
+      if (row?.code) {
+        setToast(`Gift code created: ${row.code}`);
+      } else {
+        setToast('Gift code created.');
+      }
+      setGiftAmount('');
+      setGiftCode('');
+      setGiftMemo('');
+      setTimeout(() => setToast(null), 2500);
+    } catch (err: unknown) {
+      setToast(errorText(err));
+      setTimeout(() => setToast(null), 2500);
+    }
   }
 
   async function approveWithdraw(id: string) {
@@ -825,6 +883,93 @@ export default function AdminPaymentsPage() {
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      <Section
+        title="Gift codes"
+        subtitle="Create one-time wallet credits that riders can redeem."
+        actions={<button className="btn" onClick={() => void qc.invalidateQueries({ queryKey: ['admin_gift_codes'] })} disabled={giftCodesQ.isLoading}>Refresh</button>}
+      >
+        <div className="grid gap-3 sm:grid-cols-4">
+          <label className="text-xs">
+            <div className="text-gray-500 mb-1">Amount (IQD)</div>
+            <input
+              className="input w-full"
+              type="number"
+              value={giftAmount}
+              onChange={(e) => setGiftAmount(e.target.value)}
+              placeholder="5000"
+            />
+          </label>
+          <label className="text-xs">
+            <div className="text-gray-500 mb-1">Custom code (optional)</div>
+            <input
+              className="input w-full font-mono"
+              value={giftCode}
+              onChange={(e) => setGiftCode(e.target.value.toUpperCase())}
+              placeholder="WELCOME2024"
+            />
+          </label>
+          <label className="text-xs sm:col-span-2">
+            <div className="text-gray-500 mb-1">Memo (optional)</div>
+            <input
+              className="input w-full"
+              value={giftMemo}
+              onChange={(e) => setGiftMemo(e.target.value)}
+              placeholder="Promo or campaign name"
+            />
+          </label>
+        </div>
+        <div className="mt-3">
+          <button className="btn btn-primary" onClick={() => void createGiftCode()}>Create gift code</button>
+        </div>
+
+        {giftCodesQ.isLoading ? <div className="text-sm text-gray-600 mt-3">Loading gift codes…</div> : null}
+        {giftCodesQ.error ? <div className="text-sm text-red-600 mt-3">{errorText(giftCodesQ.error)}</div> : null}
+
+        <div className="mt-3 overflow-x-auto rounded-xl border border-gray-200">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50 text-xs text-gray-600">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">Code</th>
+                <th className="px-3 py-2 text-left font-medium">Amount</th>
+                <th className="px-3 py-2 text-left font-medium">Memo</th>
+                <th className="px-3 py-2 text-left font-medium">Created</th>
+                <th className="px-3 py-2 text-left font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {giftCodes.map((code, idx) => (
+                <tr key={code.code} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-3 py-2 font-mono">
+                    <div className="flex items-center gap-2">
+                      <span>{code.code}</span>
+                      <button
+                        className="btn"
+                        onClick={() => void navigator.clipboard?.writeText(code.code)}
+                        type="button"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">{formatIQD(code.amount_iqd)}</td>
+                  <td className="px-3 py-2 text-xs text-gray-600">{code.memo ?? '—'}</td>
+                  <td className="px-3 py-2 text-xs text-gray-600">{new Date(code.created_at).toLocaleString()}</td>
+                  <td className="px-3 py-2">
+                    <span className={statusPill(code.redeemed_at ? 'redeemed' : 'active')}>{code.redeemed_at ? 'Redeemed' : 'Active'}</span>
+                    {code.redeemed_at ? <div className="text-[11px] text-gray-500 mt-1">by {shortId(code.redeemed_by ?? '')}</div> : null}
+                  </td>
+                </tr>
+              ))}
+              {giftCodes.length === 0 && !giftCodesQ.isLoading ? (
+                <tr>
+                  <td className="px-3 py-4 text-sm text-gray-500" colSpan={5}>No gift codes created yet.</td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
