@@ -39,3 +39,6 @@ verify_jwt = false
 
 [functions.expire-rides]
 verify_jwt = false
+
+[functions.match-ride]
+verify_jwt = false
