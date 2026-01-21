@@ -17,8 +17,16 @@ export function createServiceClient() {
 }
 
 export async function requireUser(req: Request) {
-  const anon = createAnonClient(req);
-  const { data, error } = await anon.auth.getUser();
+  const authHeader = req.headers.get('Authorization') ?? '';
+  const token = authHeader.toLowerCase().startsWith('bearer ')
+    ? authHeader.slice('bearer '.length).trim()
+    : authHeader.trim();
+  if (!token) {
+    return { user: null, error: 'Missing authorization token' } as const;
+  }
+
+  const service = createServiceClient();
+  const { data, error } = await service.auth.getUser(token);
   if (error || !data?.user) {
     return { user: null, error: error?.message ?? 'Unauthorized' } as const;
   }
