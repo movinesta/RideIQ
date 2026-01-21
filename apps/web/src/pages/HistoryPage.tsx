@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabaseClient';
 import { errorText } from '../lib/errors';
 import { formatIQD } from '../lib/money';
 
+type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical';
+
 type RideRow = {
   id: string;
   status: string;
@@ -122,7 +124,7 @@ export default function HistoryPage() {
   const [ratingComment, setRatingComment] = React.useState<string>('');
 
   const [incidentRideId, setIncidentRideId] = React.useState<string | null>(null);
-  const [incidentSeverity, setIncidentSeverity] = React.useState<'low' | 'medium' | 'high' | 'critical'>('low');
+  const [incidentSeverity, setIncidentSeverity] = React.useState<IncidentSeverity>('low');
   const [incidentCategory, setIncidentCategory] = React.useState<string>('service');
   const [incidentDescription, setIncidentDescription] = React.useState<string>('');
 
@@ -284,7 +286,7 @@ export default function HistoryPage() {
             <div className="grid grid-cols-2 gap-2">
               <label className="text-xs">
                 <div className="text-gray-500 mb-1">Severity</div>
-                <select className="input" value={incidentSeverity} onChange={(e) => setIncidentSeverity(e.target.value as any)}>
+                <select className="input" value={incidentSeverity} onChange={(e) => setIncidentSeverity(e.target.value as IncidentSeverity)}>
                   <option value="low">low</option>
                   <option value="medium">medium</option>
                   <option value="high">high</option>

@@ -57,7 +57,7 @@ type WithdrawRequestRow = {
   user_id: string;
   amount_iqd: number;
   payout_kind: 'qicard' | 'asiapay' | 'zaincash';
-  destination: any;
+  destination: WithdrawDestination;
   status: 'requested' | 'approved' | 'rejected' | 'paid' | 'cancelled' | string;
   note: string | null;
   payout_reference: string | null;
@@ -100,6 +100,13 @@ type WithdrawPayoutMethodRow = {
   enabled: boolean;
 };
 
+type WithdrawDestination = {
+  wallet_number?: string;
+  card_number?: string;
+  account?: string;
+  [key: string]: unknown;
+} | null;
+
 type UserNotificationRow = {
   id: string;
   user_id: string;
@@ -112,6 +119,12 @@ type UserNotificationRow = {
 };
 
 type TabKey = 'balance' | 'holds' | 'transactions' | 'topups' | 'withdrawals' | 'notifications';
+type WithdrawKind = WithdrawPayoutMethodRow['payout_kind'];
+type RealtimePayload<T> = {
+  eventType?: string;
+  old?: T;
+  new?: T;
+};
 
 function submitPost(url: string, fields: Record<string, string>) {
   const form = document.createElement('form');
@@ -344,7 +357,7 @@ export default function WalletPage() {
           void qc.invalidateQueries({ queryKey: ['topup_intents'] });
           void qc.invalidateQueries({ queryKey: ['wallet_account'] });
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_withdraw_requests', filter: `user_id=eq.${uid}` }, (payload: any) => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_withdraw_requests', filter: `user_id=eq.${uid}` }, (payload: RealtimePayload<{ status?: string }>) => {
           void qc.invalidateQueries({ queryKey: ['wallet_withdraw_requests'] });
           void qc.invalidateQueries({ queryKey: ['wallet_account'] });
           void qc.invalidateQueries({ queryKey: ['wallet_holds'] });
@@ -358,7 +371,7 @@ export default function WalletPage() {
             }
           }
         })
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'user_notifications', filter: `user_id=eq.${uid}` }, (payload: any) => {
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'user_notifications', filter: `user_id=eq.${uid}` }, (payload: RealtimePayload<{ title?: string }>) => {
           void qc.invalidateQueries({ queryKey: ['user_notifications'] });
           const title = payload?.new?.title;
           if (title) {
@@ -808,7 +821,7 @@ export default function WalletPage() {
               <select
                 className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm bg-white"
                 value={withdrawKind}
-                onChange={(e) => setWithdrawKind(e.target.value as any)}
+                onChange={(e) => setWithdrawKind(e.target.value as WithdrawKind)}
                 disabled={enabledWithdrawMethods.length === 0}
               >
                 {enabledWithdrawMethods.map((m) => (
