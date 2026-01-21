@@ -12,6 +12,18 @@ type MatchRideBody = {
   stale_after_seconds?: number;
 };
 
+function asFiniteNumber(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
+function clampNumber(v: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, v));
+}
+
+function clampInt(v: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.trunc(v)));
+}
+
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
   if (preflight) return preflight;
@@ -51,10 +63,10 @@ Deno.serve(async (req) => {
   const { data, error } = await service.rpc('dispatch_match_ride', {
     p_request_id: requestId,
     p_rider_id: user.id,
-    p_radius_m: body.radius_m ?? 5000,
-    p_limit_n: body.limit_n ?? 20,
-    p_match_ttl_seconds: body.match_ttl_seconds ?? 120,
-    p_stale_after_seconds: body.stale_after_seconds ?? 30,
+    p_radius_m: clampNumber(asFiniteNumber(body.radius_m) ?? 5000, 100, 50000),
+    p_limit_n: clampInt(asFiniteNumber(body.limit_n) ?? 20, 1, 50),
+    p_match_ttl_seconds: clampInt(asFiniteNumber(body.match_ttl_seconds) ?? 120, 30, 600),
+    p_stale_after_seconds: clampInt(asFiniteNumber(body.stale_after_seconds) ?? 30, 5, 600),
   });
 
   if (error) {
@@ -72,14 +84,36 @@ Deno.serve(async (req) => {
     if (normalizedMessage === 'invalid_quote') {
       return errorJson('Ride quote is invalid. Please request a new quote.', 422, 'INVALID_QUOTE');
     }
-    if (normalizedMessage.includes('function st_dwithin')) {
+    const pgCode = (error as any)?.code as string | undefined;
+
+    // Common PostGIS / schema-mismatch failures (Supabase often installs PostGIS under the `extensions` schema)
+    if (/type\s+\"geometry\"\s+does\s+not\s+exist/i.test(normalizedMessage)) {
+      return errorJson(
+        'Geospatial types are unavailable in the current search_path. This usually happens when PostGIS is installed in the `extensions` schema and code casts to `geometry` without schema-qualifying.',
+        503,
+        'GEOSPATIAL_SCHEMA_MISMATCH',
+        { hint: 'Ensure PostGIS is installed (e.g. `create extension if not exists postgis with schema extensions;`) and avoid `::geometry` casts, or use `extensions.geometry` explicitly.' },
+      );
+    }
+
+    if (/operator\s+does\s+not\s+exist:.*<->/i.test(normalizedMessage)) {
+      return errorJson(
+        'Geospatial nearest-neighbor operator `<->` is unavailable for the current PostGIS schema setup.',
+        503,
+        'GEOSPATIAL_SCHEMA_MISMATCH',
+        { hint: 'If PostGIS is installed in `extensions`, prefer ordering by `extensions.st_distance(...)` instead of `<->`, or install PostGIS in `public`.' },
+      );
+    }
+
+    if (/(function|procedure).*st_dwithin/i.test(normalizedMessage) || (pgCode === '42883' && /st_dwithin/i.test(normalizedMessage))) {
       return errorJson(
         'Geospatial matching is unavailable. Please enable PostGIS and try again.',
         503,
         'GEOSPATIAL_UNAVAILABLE',
-        { hint: 'Run `create extension if not exists postgis;` to enable st_dwithin.' },
+        { hint: 'Run `create extension if not exists postgis with schema extensions;` and ensure your matcher calls `extensions.st_dwithin(...)` (or includes `extensions` in search_path).' },
       );
     }
+
     await logAppEvent({
       event_type: 'dispatch_match_ride_error',
       actor_id: user.id,

@@ -2337,6 +2337,7 @@ language plpgsql
 security definer
 set search_path = 'pg_catalog, extensions, public'
 as $$
+#variable_conflict use_column
 declare
   rr record;
   candidate uuid;
@@ -2440,13 +2441,13 @@ begin
       where d.status = 'available'
         and (array_length(tried, 1) is null or d.id <> all(tried))
         and dl.updated_at >= now() - make_interval(secs => p_stale_after_seconds)
-        and public.st_dwithin(dl.loc, pickup.pickup, p_radius_m)
+        and extensions.st_dwithin(dl.loc, pickup.pickup, (p_radius_m)::double precision, true)
         and not exists (
           select 1 from public.rides r
           where r.driver_id = d.id
             and r.status in ('assigned','arrived','in_progress')
         )
-      order by (dl.loc::geometry <-> pickup.pickup::geometry)
+      order by extensions.st_distance(dl.loc, pickup.pickup)
       limit p_limit_n
     ), locked as (
       select c.driver_id
