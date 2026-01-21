@@ -288,7 +288,8 @@ Deno.serve(async (req) => {
 
     if (providerKind === 'qicard') {
       const baseUrl = String(providerCfg.base_url ?? envTrim('QICARD_BASE_URL') ?? '').replace(/\/$/, '');
-      const createPath = String(providerCfg.create_path ?? (envTrim('QICARD_CREATE_PATH') || '/api/payments'));
+      const createPath = String(providerCfg.create_path ?? (envTrim('QICARD_CREATE_PATH') || '/payment'));
+      const createPathNorm = createPath.startsWith('/') ? createPath : `/${createPath}`;
       const apiKey = String(providerCfg.api_key ?? '');
       const bearerToken = String(providerCfg.bearer_token ?? apiKey ?? envTrim('QICARD_BEARER_TOKEN'));
       const basicUser = String(providerCfg.basic_auth_user ?? envTrim('QICARD_BASIC_AUTH_USER')).trim();
@@ -310,7 +311,9 @@ Deno.serve(async (req) => {
         description: `${APP_SERVICE_TYPE} (${pkg.label})`,
         reference: intentId,
         callbackUrl: notifyUrl,
+        callback_url: notifyUrl,
         returnUrl,
+        return_url: returnUrl,
         metadata: { intent_id: intentId, user_id: user.id, provider: provider.code },
       };
 
@@ -319,7 +322,7 @@ Deno.serve(async (req) => {
       else if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
       if (terminalId) headers['X-Terminal-Id'] = terminalId;
 
-      const res = await fetch(`${baseUrl}${createPath}`, {
+      const res = await fetch(`${baseUrl}${createPathNorm}`, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
@@ -333,8 +336,19 @@ Deno.serve(async (req) => {
         out = null;
       }
 
-      const redirectUrl = String(out?.formUrl ?? out?.form_url ?? out?.checkoutUrl ?? out?.url ?? out?.redirect_url ?? '');
-      const providerTxId = String(out?.id ?? out?.paymentId ?? out?.payment_id ?? out?.txId ?? out?.transactionId ?? '');
+      const redirectUrl = String(
+        out?.formUrl ?? out?.form_url ??
+        out?.checkoutUrl ?? out?.checkout_url ??
+        out?.redirectUrl ?? out?.redirect_url ??
+        out?.url ??
+        out?.data?.formUrl ?? out?.data?.form_url ?? out?.data?.checkoutUrl ?? out?.data?.checkout_url ?? out?.data?.redirectUrl ?? out?.data?.redirect_url ?? out?.data?.url ??
+        ''
+      );
+      const providerTxId = String(
+        out?.id ?? out?.paymentId ?? out?.payment_id ?? out?.txId ?? out?.transactionId ??
+        out?.data?.id ?? out?.data?.paymentId ?? out?.data?.payment_id ?? out?.data?.txId ?? out?.data?.transactionId ??
+        ''
+      );
 
       // Log response for debugging/idempotency.
       try {

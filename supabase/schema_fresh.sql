@@ -2234,7 +2234,7 @@ VALUES (
   false,
   jsonb_build_object(
     'base_url', '',
-    'create_path', '/api/payments',
+    'create_path', '/payment',
     'status_path', '',
     'currency', 'IQD',
     'bearer_token', '',
