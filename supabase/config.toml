@@ -37,6 +37,9 @@ verify_jwt = false
 [functions.topup-reconcile]
 verify_jwt = false
 
+[functions.topup-create]
+verify_jwt = false
+
 [functions.expire-rides]
 verify_jwt = false
 
