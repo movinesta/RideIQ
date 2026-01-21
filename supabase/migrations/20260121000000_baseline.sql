@@ -490,7 +490,7 @@ begin
   order by created_at desc
   limit 1;
 
-  dist_m := st_distance(_pickup, _dropoff);
+  dist_m := extensions.st_distance(_pickup::extensions.geometry, _dropoff::extensions.geometry);
   dist_km := greatest(0, dist_m / 1000.0);
 
   -- MVP: base + per_km, ignore duration for now
