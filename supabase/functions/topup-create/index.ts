@@ -255,12 +255,7 @@ Deno.serve(async (req) => {
         await service.from('provider_events').insert({
           provider_code: provider.code,
           provider_event_id: `init:${intentId}`,
-          payload: {
-          post_url: paymentUrl,
-          post_fields: postFields,
-          auth_mode: basicUser && basicPass ? 'basic' : bearerToken ? 'bearer' : 'none',
-          terminal_id: terminalId || null,
-        },
+          payload: { post_url: paymentUrl, post_fields: postFields },
         });
       } catch {
         // ignore duplicates
@@ -292,13 +287,15 @@ Deno.serve(async (req) => {
     }
 
     if (providerKind === 'qicard') {
-      const baseUrl = String(envTrim('QICARD_BASE_URL') ?? providerCfg.base_url ?? '').replace(/\/$/, '');
-      const createPath = String(envTrim('QICARD_CREATE_PATH') ?? providerCfg.create_path ?? '/payments');
+      const baseUrl = String(providerCfg.base_url ?? envTrim('QICARD_BASE_URL') ?? '').replace(/\/$/, '');
+      // QiCard docs use sandbox host like: https://uat-sandbox-3ds-api.qi.iq/api/v1
+      // and endpoints commonly start with /payment/... (so don't default to /api/... again).
+      const createPath = String(providerCfg.create_path ?? (envTrim('QICARD_CREATE_PATH') || '/payment'));
       const apiKey = String(providerCfg.api_key ?? '');
-      const bearerToken = String(envTrim('QICARD_BEARER_TOKEN') ?? providerCfg.bearer_token ?? apiKey ?? '');
-      const basicUser = String(envTrim('QICARD_BASIC_AUTH_USER') ?? providerCfg.basic_auth_user ?? '').trim();
-      const basicPass = String(envTrim('QICARD_BASIC_AUTH_PASS') ?? providerCfg.basic_auth_pass ?? '').trim();
-      const terminalId = String(envTrim('QICARD_TERMINAL_ID') ?? providerCfg.terminal_id ?? '').trim();
+      const bearerToken = String(providerCfg.bearer_token ?? apiKey ?? envTrim('QICARD_BEARER_TOKEN'));
+      const basicUser = String(providerCfg.basic_auth_user ?? envTrim('QICARD_BASIC_AUTH_USER')).trim();
+      const basicPass = String(providerCfg.basic_auth_pass ?? envTrim('QICARD_BASIC_AUTH_PASS')).trim();
+      const terminalId = String(providerCfg.terminal_id ?? envTrim('QICARD_TERMINAL_ID')).trim();
       const currency = String(providerCfg.currency ?? 'IQD');
 
       if (!baseUrl) {
@@ -324,7 +321,8 @@ Deno.serve(async (req) => {
       else if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
       if (terminalId) headers['X-Terminal-Id'] = terminalId;
 
-      const res = await fetch(`${baseUrl}${createPath}`, {
+      const requestUrl = `${baseUrl}${createPath}`;
+      const res = await fetch(requestUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
@@ -338,26 +336,66 @@ Deno.serve(async (req) => {
         out = null;
       }
 
-      const redirectUrl = String(out?.formUrl ?? out?.form_url ?? out?.checkoutUrl ?? out?.url ?? out?.redirect_url ?? '');
+      const redirectUrl = String(
+        out?.formUrl ??
+          out?.form_url ??
+          out?.checkoutUrl ??
+          out?.url ??
+          out?.redirect_url ??
+          res.headers.get('location') ??
+          ''
+      );
       const providerTxId = String(out?.id ?? out?.paymentId ?? out?.payment_id ?? out?.txId ?? out?.transactionId ?? '');
 
       // Log response for debugging/idempotency.
+      const redactedHeaders = { ...headers } as Record<string, string>;
+      if (redactedHeaders.Authorization) redactedHeaders.Authorization = '[REDACTED]';
+
+      // Log response for debugging/idempotency.
+      // We always write an init:<intentId> event, even if the provider doesn't return a payment id.
       try {
         await service.from('provider_events').insert({
           provider_code: provider.code,
-          provider_event_id: providerTxId || `init:${intentId}`,
-          payload: { request: payload, response: out ?? text, status: res.status },
+          provider_event_id: `init:${intentId}`,
+          payload: {
+            request_url: requestUrl,
+            request_headers: redactedHeaders,
+            request_body: payload,
+            response_status: res.status,
+            response_headers: Object.fromEntries(res.headers.entries()),
+            response_json: out,
+            response_text: out ? null : text,
+            parsed_redirect_url: redirectUrl || null,
+            parsed_provider_tx_id: providerTxId || null,
+          },
         });
+
+        if (providerTxId) {
+          await service.from('provider_events').insert({
+            provider_code: provider.code,
+            provider_event_id: providerTxId,
+            payload: { kind: 'alias', init_event_id: `init:${intentId}` },
+          });
+        }
       } catch {
-        // ignore duplicates
+        // best-effort only
       }
 
       if (!res.ok || !redirectUrl) {
         await service
           .from('topup_intents')
-          .update({ status: 'failed', failure_reason: `qicard_init_failed:${res.status}`, provider_payload: { init: out ?? text } })
+          .update({
+            status: 'failed',
+            failure_reason: `qicard_init_failed:${res.status}`,
+            provider_payload: { init: out ?? text },
+          })
           .eq('id', intentId);
-        return errorJson('Failed to initialize QiCard payment.', 502, 'PROVIDER_ERROR');
+
+        return errorJson(
+          `Failed to initialize QiCard payment (status=${res.status}). Check public.provider_events where provider_event_id='init:${intentId}'.`,
+          502,
+          'PROVIDER_ERROR'
+        );
       }
 
       await service
