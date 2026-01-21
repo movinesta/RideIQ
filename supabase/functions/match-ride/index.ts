@@ -58,17 +58,36 @@ Deno.serve(async (req) => {
   });
 
   if (error) {
-    if (error.message?.includes("insufficient_wallet_balance")) {
-      return errorJson("Insufficient wallet balance. Please top up and try again.", 409, "INSUFFICIENT_FUNDS");
+    const rawMessage = error.message ?? 'Unknown error';
+    const normalizedMessage = rawMessage.replace(/^RPC error:\s*/i, '').trim();
+    if (normalizedMessage.includes('insufficient_wallet_balance')) {
+      return errorJson('Insufficient wallet balance. Please top up and try again.', 409, 'INSUFFICIENT_FUNDS');
+    }
+    if (normalizedMessage === 'ride_request_not_found') {
+      return errorJson('Ride request not found.', 404, 'RIDE_REQUEST_NOT_FOUND');
+    }
+    if (normalizedMessage === 'forbidden') {
+      return errorJson('You are not allowed to match this ride request.', 403, 'FORBIDDEN');
+    }
+    if (normalizedMessage === 'invalid_quote') {
+      return errorJson('Ride quote is invalid. Please request a new quote.', 422, 'INVALID_QUOTE');
+    }
+    if (normalizedMessage.includes('function st_dwithin')) {
+      return errorJson(
+        'Geospatial matching is unavailable. Please enable PostGIS and try again.',
+        503,
+        'GEOSPATIAL_UNAVAILABLE',
+        { hint: 'Enable the PostGIS extension to support st_dwithin.' },
+      );
     }
     await logAppEvent({
       event_type: 'dispatch_match_ride_error',
       actor_id: user.id,
       actor_type: 'rider',
       request_id: requestId,
-      payload: { message: error.message },
+      payload: { message: rawMessage },
     });
-    return errorJson(error.message, 400, 'DISPATCH_ERROR');
+    return errorJson(rawMessage, 400, 'DISPATCH_ERROR');
   }
 
   const row = Array.isArray(data) ? data[0] : data;
