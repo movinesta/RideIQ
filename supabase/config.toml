@@ -37,11 +37,17 @@ verify_jwt = false
 [functions.topup-reconcile]
 verify_jwt = false
 
-[functions.topup-create]
-verify_jwt = false
-
 [functions.expire-rides]
 verify_jwt = false
 
 [functions.match-ride]
+verify_jwt = false
+
+[functions.driver-accept]
+# NOTE: Work around Supabase Edge Functions gateway rejecting valid ES256 JWTs in some environments.
+# The function still authenticates the caller internally via requireUser().
+verify_jwt = false
+
+[functions.ride-transition]
+# NOTE: Same as above; caller auth is enforced inside the function.
 verify_jwt = false

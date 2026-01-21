@@ -288,9 +288,7 @@ Deno.serve(async (req) => {
 
     if (providerKind === 'qicard') {
       const baseUrl = String(providerCfg.base_url ?? envTrim('QICARD_BASE_URL') ?? '').replace(/\/$/, '');
-      // QiCard docs use sandbox host like: https://uat-sandbox-3ds-api.qi.iq/api/v1
-      // and endpoints commonly start with /payment/... (so don't default to /api/... again).
-      const createPath = String(providerCfg.create_path ?? (envTrim('QICARD_CREATE_PATH') || '/payment'));
+      const createPath = String(providerCfg.create_path ?? (envTrim('QICARD_CREATE_PATH') || '/api/payments'));
       const apiKey = String(providerCfg.api_key ?? '');
       const bearerToken = String(providerCfg.bearer_token ?? apiKey ?? envTrim('QICARD_BEARER_TOKEN'));
       const basicUser = String(providerCfg.basic_auth_user ?? envTrim('QICARD_BASIC_AUTH_USER')).trim();
@@ -307,7 +305,8 @@ Deno.serve(async (req) => {
       const returnUrl = String(providerCfg.return_url ?? (Deno.env.get('APP_BASE_URL') ? `${(Deno.env.get('APP_BASE_URL') ?? '').replace(/\/$/, '')}/wallet?tab=topups&intent_id=${encodeURIComponent(intentId)}` : ''));
 
       const payload: Record<string, unknown> = {
-        // Required by QiCard gateway; used as an idempotency key.
+        // QiCard sandbox/API expects a requestId (their error: "requestId (must not be empty)").
+        // We use our intent_id for idempotency.
         requestId: intentId,
         amount: Math.trunc(amountIqd),
         currency,
@@ -323,8 +322,7 @@ Deno.serve(async (req) => {
       else if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
       if (terminalId) headers['X-Terminal-Id'] = terminalId;
 
-      const requestUrl = `${baseUrl}${createPath}`;
-      const res = await fetch(requestUrl, {
+      const res = await fetch(`${baseUrl}${createPath}`, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
@@ -338,66 +336,26 @@ Deno.serve(async (req) => {
         out = null;
       }
 
-      const redirectUrl = String(
-        out?.formUrl ??
-          out?.form_url ??
-          out?.checkoutUrl ??
-          out?.url ??
-          out?.redirect_url ??
-          res.headers.get('location') ??
-          ''
-      );
+      const redirectUrl = String(out?.formUrl ?? out?.form_url ?? out?.checkoutUrl ?? out?.url ?? out?.redirect_url ?? '');
       const providerTxId = String(out?.id ?? out?.paymentId ?? out?.payment_id ?? out?.txId ?? out?.transactionId ?? '');
 
       // Log response for debugging/idempotency.
-      const redactedHeaders = { ...headers } as Record<string, string>;
-      if (redactedHeaders.Authorization) redactedHeaders.Authorization = '[REDACTED]';
-
-      // Log response for debugging/idempotency.
-      // We always write an init:<intentId> event, even if the provider doesn't return a payment id.
       try {
         await service.from('provider_events').insert({
           provider_code: provider.code,
-          provider_event_id: `init:${intentId}`,
-          payload: {
-            request_url: requestUrl,
-            request_headers: redactedHeaders,
-            request_body: payload,
-            response_status: res.status,
-            response_headers: Object.fromEntries(res.headers.entries()),
-            response_json: out,
-            response_text: out ? null : text,
-            parsed_redirect_url: redirectUrl || null,
-            parsed_provider_tx_id: providerTxId || null,
-          },
+          provider_event_id: providerTxId || `init:${intentId}`,
+          payload: { request: payload, response: out ?? text, status: res.status },
         });
-
-        if (providerTxId) {
-          await service.from('provider_events').insert({
-            provider_code: provider.code,
-            provider_event_id: providerTxId,
-            payload: { kind: 'alias', init_event_id: `init:${intentId}` },
-          });
-        }
       } catch {
-        // best-effort only
+        // ignore duplicates
       }
 
       if (!res.ok || !redirectUrl) {
         await service
           .from('topup_intents')
-          .update({
-            status: 'failed',
-            failure_reason: `qicard_init_failed:${res.status}`,
-            provider_payload: { init: out ?? text },
-          })
+          .update({ status: 'failed', failure_reason: `qicard_init_failed:${res.status}`, provider_payload: { init: out ?? text } })
           .eq('id', intentId);
-
-        return errorJson(
-          `Failed to initialize QiCard payment (status=${res.status}). Check public.provider_events where provider_event_id='init:${intentId}'.`,
-          502,
-          'PROVIDER_ERROR'
-        );
+        return errorJson('Failed to initialize QiCard payment.', 502, 'PROVIDER_ERROR');
       }
 
       await service
