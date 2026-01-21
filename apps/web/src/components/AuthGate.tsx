@@ -3,12 +3,29 @@ import type { Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
-  const [loading, setLoading] = React.useState(true);
+  const [loading, setLoading] = React.useState(isSupabaseConfigured);
   const [session, setSession] = React.useState<Session | null>(null);
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [mode, setMode] = React.useState<'signIn' | 'signUp'>('signIn');
   const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session);
+      setLoading(false);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+    });
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
   if (!isSupabaseConfigured) {
     return (
@@ -27,22 +44,6 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-
-  React.useEffect(() => {
-    let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setSession(data.session);
-      setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-    });
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
 
   if (loading) {
     return <div className="p-6 text-sm text-gray-500">Loading…</div>;

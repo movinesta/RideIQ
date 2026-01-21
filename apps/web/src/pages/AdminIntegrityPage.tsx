@@ -21,8 +21,10 @@ type Snapshot = {
     active_holds_iqd_sum: number;
     held_minus_active_holds: number;
   };
-  issues: Record<string, any[]>;
+  issues: Record<string, IssueRow[]>;
 };
+
+type IssueRow = Record<string, unknown>;
 
 async function fetchSnapshot(args: { limit: number; holdAgeSeconds: number; topupAgeSeconds: number }): Promise<Snapshot> {
   const { data, error } = await supabase.rpc('admin_wallet_integrity_snapshot', {
@@ -63,7 +65,7 @@ function EmptyState({ text }: { text: string }) {
   return <div className="text-sm text-gray-600">{text}</div>;
 }
 
-function JsonTable({ rows, keys }: { rows: any[]; keys: string[] }) {
+function JsonTable({ rows, keys }: { rows: IssueRow[]; keys: string[] }) {
   if (!rows || rows.length === 0) return <EmptyState text="No issues found." />;
   return (
     <div className="overflow-auto rounded-xl border border-gray-200">
@@ -80,7 +82,7 @@ function JsonTable({ rows, keys }: { rows: any[]; keys: string[] }) {
             <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
               {keys.map((k) => (
                 <td key={k} className="px-3 py-2 align-top whitespace-nowrap">
-                  <Cell value={(r as any)?.[k]} />
+                  <Cell value={r[k]} />
                 </td>
               ))}
             </tr>

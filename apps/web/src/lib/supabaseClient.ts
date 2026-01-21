@@ -8,7 +8,6 @@ const anon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 export const isSupabaseConfigured = Boolean(url && anon);
 
 if (!isSupabaseConfigured) {
-  // eslint-disable-next-line no-console
   console.warn('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. The app cannot connect to Supabase.');
 }
 

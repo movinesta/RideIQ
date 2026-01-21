@@ -51,12 +51,19 @@ type ProviderEventRow = {
   received_at: string;
 };
 
+type WithdrawDestination = {
+  wallet_number?: string;
+  card_number?: string;
+  account?: string;
+  [key: string]: unknown;
+} | null;
+
 type WithdrawRequestRow = {
   id: string;
   user_id: string;
   amount_iqd: number;
   payout_kind: 'qicard' | 'asiapay' | 'zaincash';
-  destination: any;
+  destination: WithdrawDestination;
   status: string;
   note: string | null;
   payout_reference: string | null;
@@ -66,6 +73,8 @@ type WithdrawRequestRow = {
   rejected_at?: string | null;
   cancelled_at?: string | null;
 };
+
+type WithdrawStatus = 'all' | 'requested' | 'approved' | 'rejected' | 'paid' | 'cancelled';
 
 type WithdrawPolicyRow = {
   id: number;
@@ -209,7 +218,7 @@ export default function AdminPaymentsPage() {
     placeholderData: keepPreviousData,
   });
 
-  const [withdrawStatus, setWithdrawStatus] = React.useState<'all' | 'requested' | 'approved' | 'rejected' | 'paid' | 'cancelled'>('requested');
+  const [withdrawStatus, setWithdrawStatus] = React.useState<WithdrawStatus>('requested');
   const withdrawsQ = useQuery({
     queryKey: ['admin_withdraw_requests', { withdrawStatus }],
     queryFn: () => fetchWithdrawRequests({ status: withdrawStatus }),
@@ -537,7 +546,7 @@ export default function AdminPaymentsPage() {
           <>
             <label className="text-xs text-gray-600">
               Status
-              <select className="input ml-2" value={withdrawStatus} onChange={(e) => setWithdrawStatus(e.target.value as any)}>
+              <select className="input ml-2" value={withdrawStatus} onChange={(e) => setWithdrawStatus(e.target.value as WithdrawStatus)}>
                 {(['all', 'requested', 'approved', 'paid', 'rejected', 'cancelled'] as const).map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
