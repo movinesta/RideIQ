@@ -61,7 +61,7 @@ BEGIN
   v_memo := nullif(trim(coalesce(p_memo, '')), '');
 
   IF v_code = '' THEN
-    v_code := upper(encode(gen_random_bytes(6), 'hex'));
+    v_code := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 12));
   END IF;
 
   LOOP
@@ -74,7 +74,7 @@ BEGIN
       IF p_code IS NOT NULL AND trim(p_code) <> '' THEN
         RAISE EXCEPTION 'gift_code_exists';
       END IF;
-      v_code := upper(encode(gen_random_bytes(6), 'hex'));
+      v_code := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 12));
     END;
   END LOOP;
 
