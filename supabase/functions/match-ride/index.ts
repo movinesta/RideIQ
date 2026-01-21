@@ -72,6 +72,13 @@ Deno.serve(async (req) => {
     if (normalizedMessage === 'invalid_quote') {
       return errorJson('Ride quote is invalid. Please request a new quote.', 422, 'INVALID_QUOTE');
     }
+    if (normalizedMessage.includes('function st_dwithin')) {
+      return errorJson(
+        'Geospatial matching is unavailable. Please contact support.',
+        500,
+        'MISSING_GEOSPATIAL_EXTENSION',
+      );
+    }
     await logAppEvent({
       event_type: 'dispatch_match_ride_error',
       actor_id: user.id,
