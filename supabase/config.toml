@@ -42,3 +42,15 @@ verify_jwt = false
 
 [functions.match-ride]
 verify_jwt = false
+
+# These functions validate the incoming access token inside the handler using
+# service_role auth.getUser(). Disabling gateway JWT verification avoids
+# failures when the project uses asymmetric JWT signing keys (e.g., ES256).
+[functions.driver-accept]
+verify_jwt = false
+
+[functions.ride-transition]
+verify_jwt = false
+
+[functions.topup-create]
+verify_jwt = false
