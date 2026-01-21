@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     if (!provider.enabled) return errorJson('Provider disabled', 409, 'PROVIDER_DISABLED');
 
     const cfg = ((provider as any).config ?? {}) as Record<string, unknown>;
-    const secret = String(cfg.secure_hash_secret ?? '');
+    const secret = String(cfg.secure_hash_secret ?? cfg.secureHashSecret ?? Deno.env.get('ASIAPAY_SECURE_HASH_SECRET') ?? '');
 
     // Verify SecureHash if secret is configured.
     if (secret) {

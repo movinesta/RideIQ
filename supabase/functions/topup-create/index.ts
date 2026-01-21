@@ -23,6 +23,16 @@ function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
+
+function envTrim(key: string) {
+  return (Deno.env.get(key) ?? '').trim();
+}
+
+function basicAuthHeader(user: string, pass: string) {
+  return `Basic ${btoa(`${user}:${pass}`)}`;
+}
+
+
 // (JWT signing + SHA helpers moved to _shared/crypto.ts)
 
 Deno.serve(async (req) => {
@@ -194,12 +204,12 @@ Deno.serve(async (req) => {
 
 
     if (providerKind === 'asiapay') {
-      const paymentUrl = String(providerCfg.payment_url ?? providerCfg.paymentUrl ?? '').trim();
-      const merchantId = String(providerCfg.merchant_id ?? providerCfg.merchantId ?? '').trim();
-      const secret = String(providerCfg.secure_hash_secret ?? providerCfg.secureHashSecret ?? '').trim();
-      const currCode = String(providerCfg.curr_code ?? providerCfg.currCode ?? '368').trim();
-      const payType = String(providerCfg.pay_type ?? providerCfg.payType ?? 'N').trim() || 'N';
-      const lang = String(providerCfg.lang ?? 'E').trim() || 'E';
+      const paymentUrl = String(providerCfg.payment_url ?? providerCfg.paymentUrl ?? envTrim('ASIAPAY_PAYMENT_URL')).trim();
+      const merchantId = String(providerCfg.merchant_id ?? providerCfg.merchantId ?? envTrim('ASIAPAY_MERCHANT_ID')).trim();
+      const secret = String(providerCfg.secure_hash_secret ?? providerCfg.secureHashSecret ?? envTrim('ASIAPAY_SECURE_HASH_SECRET')).trim();
+      const currCode = String(providerCfg.curr_code ?? providerCfg.currCode ?? (envTrim('ASIAPAY_CURR_CODE') || '368')).trim();
+      const payType = String(providerCfg.pay_type ?? providerCfg.payType ?? envTrim('ASIAPAY_PAY_TYPE') ?? 'N').trim() || 'N';
+      const lang = String(providerCfg.lang ?? envTrim('ASIAPAY_LANG') ?? 'E').trim() || 'E';
       const hashTypeRaw = String(providerCfg.secure_hash_type ?? providerCfg.secureHashType ?? providerCfg.hash_alg ?? 'sha1').toLowerCase();
       const secureHashType = hashTypeRaw === 'sha256' ? 'sha256' : 'sha1';
 
@@ -277,15 +287,18 @@ Deno.serve(async (req) => {
     }
 
     if (providerKind === 'qicard') {
-      const baseUrl = String(providerCfg.base_url ?? '').replace(/\/$/, '');
-      const createPath = String(providerCfg.create_path ?? '/api/payments');
+      const baseUrl = String(providerCfg.base_url ?? envTrim('QICARD_BASE_URL') ?? '').replace(/\/$/, '');
+      const createPath = String(providerCfg.create_path ?? (envTrim('QICARD_CREATE_PATH') || '/api/payments'));
       const apiKey = String(providerCfg.api_key ?? '');
-      const bearerToken = String(providerCfg.bearer_token ?? apiKey);
+      const bearerToken = String(providerCfg.bearer_token ?? apiKey ?? envTrim('QICARD_BEARER_TOKEN'));
+      const basicUser = String(providerCfg.basic_auth_user ?? envTrim('QICARD_BASIC_AUTH_USER')).trim();
+      const basicPass = String(providerCfg.basic_auth_pass ?? envTrim('QICARD_BASIC_AUTH_PASS')).trim();
+      const terminalId = String(providerCfg.terminal_id ?? envTrim('QICARD_TERMINAL_ID')).trim();
       const currency = String(providerCfg.currency ?? 'IQD');
 
       if (!baseUrl) {
         await service.from('topup_intents').update({ status: 'failed', failure_reason: 'qicard_missing_base_url' }).eq('id', intentId);
-        return errorJson('QiCard is not configured (missing base_url in provider config).', 500, 'MISCONFIGURED');
+        return errorJson('QiCard is not configured. Provide base_url in provider config or set QICARD_BASE_URL, and set QICARD_BASIC_AUTH_USER/QICARD_BASIC_AUTH_PASS/QICARD_TERMINAL_ID for sandbox.', 500, 'MISCONFIGURED');
       }
 
       const notifyUrl = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/qicard-notify`;
@@ -302,7 +315,9 @@ Deno.serve(async (req) => {
       };
 
       const headers: Record<string, string> = { 'content-type': 'application/json' };
-      if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
+      if (basicUser && basicPass) headers.Authorization = basicAuthHeader(basicUser, basicPass);
+      else if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
+      if (terminalId) headers['X-Terminal-Id'] = terminalId;
 
       const res = await fetch(`${baseUrl}${createPath}`, {
         method: 'POST',

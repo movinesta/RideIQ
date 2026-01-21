@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
     }
 
     const cfg = ((provider as any).config ?? {}) as Record<string, unknown>;
-    const secret = String(cfg.secure_hash_secret ?? '');
+    const secret = String(cfg.secure_hash_secret ?? cfg.secureHashSecret ?? Deno.env.get('ASIAPAY_SECURE_HASH_SECRET') ?? '');
 
     let verified: boolean | null = null;
     if (secret) {

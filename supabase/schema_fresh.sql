@@ -1665,7 +1665,7 @@ FOR EACH ROW EXECUTE FUNCTION public.ensure_wallet_account();
 CREATE OR REPLACE FUNCTION public.wallet_get_my_account()
 RETURNS public.wallet_accounts
 LANGUAGE plpgsql
-STABLE
+VOLATILE
 SECURITY DEFINER
 SET search_path = 'pg_catalog'
 AS $$

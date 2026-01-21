@@ -14,6 +14,15 @@ function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
+
+function envTrim(key: string) {
+  return (Deno.env.get(key) ?? '').trim();
+}
+
+function basicAuthHeader(user: string, pass: string) {
+  return `Basic ${btoa(`${user}:${pass}`)}`;
+}
+
 function parseBool(v: string | null) {
   if (!v) return false;
   const s = v.trim().toLowerCase();
@@ -68,17 +77,22 @@ async function checkZainCash(txId: string) {
 async function checkQiCard(providerCfg: Record<string, unknown>, providerTxId: string, intentId: string) {
   // QiCard developer docs are not publicly accessible in our environment, so the endpoint and response
   // shape are driven by payment_providers.config.
-  const baseUrl = String(providerCfg.base_url ?? '').replace(/\/$/, '');
-  const statusPath = String(providerCfg.status_path ?? ''); // e.g. /api/payments/{id}
+  const baseUrl = String(providerCfg.base_url ?? envTrim('QICARD_BASE_URL') ?? '').replace(/\/$/, '');
+  const statusPath = String(providerCfg.status_path ?? (envTrim('QICARD_STATUS_PATH') || '/api/payments/{id}')); // e.g. /api/payments/{id}
   const apiKey = String(providerCfg.api_key ?? '');
-  const bearerToken = String(providerCfg.bearer_token ?? apiKey);
+  const bearerToken = String(providerCfg.bearer_token ?? apiKey ?? envTrim('QICARD_BEARER_TOKEN'));
+  const basicUser = String(providerCfg.basic_auth_user ?? envTrim('QICARD_BASIC_AUTH_USER')).trim();
+  const basicPass = String(providerCfg.basic_auth_pass ?? envTrim('QICARD_BASIC_AUTH_PASS')).trim();
+  const terminalId = String(providerCfg.terminal_id ?? envTrim('QICARD_TERMINAL_ID')).trim();
   if (!baseUrl || !statusPath) {
     return { ok: false, statusRaw: 'pending', payload: { error: 'qicard_missing_status_path', intentId } };
   }
 
   const url = `${baseUrl}${statusPath}`.replace('{id}', encodeURIComponent(providerTxId)).replace('{intent_id}', encodeURIComponent(intentId));
   const headers: Record<string, string> = { accept: 'application/json' };
-  if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
+  if (basicUser && basicPass) headers.Authorization = basicAuthHeader(basicUser, basicPass);
+  else if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
+  if (terminalId) headers['X-Terminal-Id'] = terminalId;
 
   const res = await fetch(url, { method: 'GET', headers });
   const text = await res.text();

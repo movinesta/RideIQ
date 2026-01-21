@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
     if (!provider.enabled) return errorJson('Provider disabled', 409, 'PROVIDER_DISABLED');
 
     const cfg = (provider as any).config ?? {};
-    const webhookSecret = String(cfg.webhook_secret ?? '');
+    const webhookSecret = String(cfg.webhook_secret ?? Deno.env.get('QICARD_WEBHOOK_SECRET') ?? '');
     const allowInsecure = String(Deno.env.get('ALLOW_INSECURE_WEBHOOKS') ?? '').toLowerCase() === 'true';
 
     // Verify signature if configured.
