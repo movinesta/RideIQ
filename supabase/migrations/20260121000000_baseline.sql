@@ -2299,7 +2299,7 @@ returns table (
 )
 language plpgsql
 security definer
-set search_path = 'pg_catalog, extensions'
+set search_path = 'pg_catalog, extensions, public'
 as $$
 declare
   rr record;
@@ -2404,7 +2404,7 @@ begin
       where d.status = 'available'
         and (array_length(tried, 1) is null or d.id <> all(tried))
         and dl.updated_at >= now() - make_interval(secs => p_stale_after_seconds)
-        and st_dwithin(dl.loc, pickup.pickup, p_radius_m)
+        and public.st_dwithin(dl.loc, pickup.pickup, p_radius_m)
         and not exists (
           select 1 from public.rides r
           where r.driver_id = d.id
