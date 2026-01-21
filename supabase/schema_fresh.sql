@@ -1875,8 +1875,8 @@ declare
 begin
   -- Lock request row
   select * into rr
-  from public.ride_requests
-  where id = p_request_id
+  from public.ride_requests as req
+  where req.id = p_request_id
   for update;
 
   if not found then
@@ -2335,12 +2335,12 @@ begin
   if rr.status = 'matched' and rr.match_deadline is not null and rr.match_deadline <= now() then
     update public.drivers
       set status = 'available'
-    where id = rr.assigned_driver_id
+    where public.drivers.id = rr.assigned_driver_id
       and status = 'reserved';
 
     update public.ride_requests
       set status = 'expired'
-    where id = rr.id
+    where public.ride_requests.id = rr.id
       and status = 'matched';
 
     rr.status := 'expired';
@@ -2356,7 +2356,7 @@ begin
   if rr.status in ('no_driver','expired') then
     update public.ride_requests
       set status = 'requested'
-    where id = rr.id and status in ('no_driver','expired');
+    where public.ride_requests.id = rr.id and status in ('no_driver','expired');
     rr.status := 'requested';
   end if;
 
@@ -2426,7 +2426,7 @@ begin
 
     update public.drivers
       set status = 'reserved'
-    where id = candidate and status = 'available';
+    where public.drivers.id = candidate and status = 'available';
 
     if not found then
       tried := array_append(tried, candidate);
@@ -2434,15 +2434,15 @@ begin
     end if;
 
     begin
-      update public.ride_requests
+      update public.ride_requests as req
         set status = 'matched',
             assigned_driver_id = candidate,
             match_attempts = rr.match_attempts + 1,
             match_deadline = now() + make_interval(secs => p_match_ttl_seconds)
-      where id = rr.id
+      where req.id = rr.id
         and status = 'requested'
         and assigned_driver_id is null
-      returning id, status, assigned_driver_id, match_deadline, match_attempts, matched_at
+      returning req.id, req.status, req.assigned_driver_id, req.match_deadline, req.match_attempts, req.matched_at
         into updated;
 
       if found then
@@ -2452,7 +2452,7 @@ begin
     exception when unique_violation then
       update public.drivers
         set status = 'available'
-      where id = candidate and status = 'reserved';
+      where public.drivers.id = candidate and status = 'reserved';
 
       tried := array_append(tried, candidate);
       continue;
@@ -2461,7 +2461,7 @@ begin
     -- If assignment didn't happen, release and retry
     update public.drivers
       set status = 'available'
-    where id = candidate and status = 'reserved';
+    where public.drivers.id = candidate and status = 'reserved';
 
     tried := array_append(tried, candidate);
   end loop;
@@ -2470,9 +2470,9 @@ begin
   update public.ride_requests
     set status = 'no_driver',
         match_attempts = rr.match_attempts + 1
-  where id = rr.id and status = 'requested';
+  where public.ride_requests.id = rr.id and status = 'requested';
 
-  select * into rr from public.ride_requests where id = rr.id;
+  select * into rr from public.ride_requests as req where req.id = rr.id;
   return query select rr.id, rr.status, rr.assigned_driver_id, rr.match_deadline, rr.match_attempts, rr.matched_at;
 end;
 $$;
