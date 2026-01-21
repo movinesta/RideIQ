@@ -307,6 +307,8 @@ Deno.serve(async (req) => {
       const returnUrl = String(providerCfg.return_url ?? (Deno.env.get('APP_BASE_URL') ? `${(Deno.env.get('APP_BASE_URL') ?? '').replace(/\/$/, '')}/wallet?tab=topups&intent_id=${encodeURIComponent(intentId)}` : ''));
 
       const payload: Record<string, unknown> = {
+        // Required by QiCard gateway; used as an idempotency key.
+        requestId: intentId,
         amount: Math.trunc(amountIqd),
         currency,
         description: `${APP_SERVICE_TYPE} (${pkg.label})`,
