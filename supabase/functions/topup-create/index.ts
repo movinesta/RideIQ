@@ -288,7 +288,9 @@ Deno.serve(async (req) => {
 
     if (providerKind === 'qicard') {
       const baseUrl = String(providerCfg.base_url ?? envTrim('QICARD_BASE_URL') ?? '').replace(/\/$/, '');
-      const createPath = String(providerCfg.create_path ?? (envTrim('QICARD_CREATE_PATH') || '/api/payments'));
+      // QiCard sandbox docs use: https://uat-sandbox-3ds-api.qi.iq/api/v1/payment
+      // So the safe default path is `/payment` when baseUrl already ends with `/api/v1`.
+      const createPath = String(providerCfg.create_path ?? (envTrim('QICARD_CREATE_PATH') || '/payment'));
       const apiKey = String(providerCfg.api_key ?? '');
       const bearerToken = String(providerCfg.bearer_token ?? apiKey ?? envTrim('QICARD_BEARER_TOKEN'));
       const basicUser = String(providerCfg.basic_auth_user ?? envTrim('QICARD_BASIC_AUTH_USER')).trim();
@@ -305,8 +307,8 @@ Deno.serve(async (req) => {
       const returnUrl = String(providerCfg.return_url ?? (Deno.env.get('APP_BASE_URL') ? `${(Deno.env.get('APP_BASE_URL') ?? '').replace(/\/$/, '')}/wallet?tab=topups&intent_id=${encodeURIComponent(intentId)}` : ''));
 
       const payload: Record<string, unknown> = {
-        // QiCard sandbox/API expects a requestId (their error: "requestId (must not be empty)").
-        // We use our intent_id for idempotency.
+        // Required by QiCard (see provider error: `requestId (must not be empty)`)
+        // Use the topup intent UUID for idempotency + correlation.
         requestId: intentId,
         amount: Math.trunc(amountIqd),
         currency,

@@ -43,11 +43,17 @@ verify_jwt = false
 [functions.match-ride]
 verify_jwt = false
 
+# NOTE:
+# We validate the user's JWT inside these functions (via auth.getUser()) and
+# use a service-role client for privileged writes. Disabling gateway JWT
+# verification avoids intermittent "Invalid JWT" responses from the edge
+# gateway while keeping strong auth checks in-function.
+
 [functions.driver-accept]
-# NOTE: Work around Supabase Edge Functions gateway rejecting valid ES256 JWTs in some environments.
-# The function still authenticates the caller internally via requireUser().
+verify_jwt = false
+
+[functions.topup-create]
 verify_jwt = false
 
 [functions.ride-transition]
-# NOTE: Same as above; caller auth is enforced inside the function.
 verify_jwt = false
