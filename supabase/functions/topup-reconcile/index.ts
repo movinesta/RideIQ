@@ -78,7 +78,9 @@ async function checkQiCard(providerCfg: Record<string, unknown>, providerTxId: s
   // QiCard developer docs are not publicly accessible in our environment, so the endpoint and response
   // shape are driven by payment_providers.config.
   const baseUrl = String(providerCfg.base_url ?? envTrim('QICARD_BASE_URL') ?? '').replace(/\/$/, '');
-  const statusPath = String(providerCfg.status_path ?? (envTrim('QICARD_STATUS_PATH') || '/payment/{id}')); // e.g. /api/payments/{id}
+  // QiCard sandbox host is typically https://.../api/v1, so the status endpoint is usually /payments/{id}.
+  // If you use a base_url WITHOUT /api/v1, override with QICARD_STATUS_PATH=/api/v1/payments/{id}.
+  const statusPath = String(providerCfg.status_path ?? (envTrim('QICARD_STATUS_PATH') || '/payments/{id}'));
   const apiKey = String(providerCfg.api_key ?? '');
   const bearerToken = String(providerCfg.bearer_token ?? apiKey ?? envTrim('QICARD_BEARER_TOKEN'));
   const basicUser = String(providerCfg.basic_auth_user ?? envTrim('QICARD_BASIC_AUTH_USER')).trim();
@@ -88,12 +90,7 @@ async function checkQiCard(providerCfg: Record<string, unknown>, providerTxId: s
     return { ok: false, statusRaw: 'pending', payload: { error: 'qicard_missing_status_path', intentId } };
   }
 
-  const statusPathNorm = statusPath.startsWith('/') ? statusPath : `/${statusPath}`;
-  const url = `${baseUrl}${statusPathNorm}`
-    .replace('{id}', encodeURIComponent(providerTxId))
-    .replace('{paymentId}', encodeURIComponent(providerTxId))
-    .replace('{provider_payment_id}', encodeURIComponent(providerTxId))
-    .replace('{intent_id}', encodeURIComponent(intentId));
+  const url = `${baseUrl}${statusPath}`.replace('{id}', encodeURIComponent(providerTxId)).replace('{intent_id}', encodeURIComponent(intentId));
   const headers: Record<string, string> = { accept: 'application/json' };
   if (basicUser && basicPass) headers.Authorization = basicAuthHeader(basicUser, basicPass);
   else if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
