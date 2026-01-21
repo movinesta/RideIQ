@@ -243,6 +243,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      gift_codes: {
+        Row: {
+          amount_iqd: number;
+          code: string;
+          created_at: string;
+          created_by: string | null;
+          memo: string | null;
+          redeemed_at: string | null;
+          redeemed_by: string | null;
+          redeemed_entry_id: number | null;
+        };
+        Insert: {
+          amount_iqd: number;
+          code: string;
+          created_at?: string;
+          created_by?: string | null;
+          memo?: string | null;
+          redeemed_at?: string | null;
+          redeemed_by?: string | null;
+          redeemed_entry_id?: number | null;
+        };
+        Update: {
+          amount_iqd?: number;
+          code?: string;
+          created_at?: string;
+          created_by?: string | null;
+          memo?: string | null;
+          redeemed_at?: string | null;
+          redeemed_by?: string | null;
+          redeemed_entry_id?: number | null;
+        };
+        Relationships: [];
+      };
       payment_providers: {
         Row: {
           code: string | null;
@@ -1090,6 +1123,23 @@ export type Database = {
         };
         Returns: Json;
       };
+      admin_create_gift_code: {
+        Args: {
+          p_amount_iqd: number;
+          p_code?: string;
+          p_memo?: string;
+        };
+        Returns: {
+          amount_iqd: number;
+          code: string;
+          created_at: string;
+          created_by: string | null;
+          memo: string | null;
+          redeemed_at: string | null;
+          redeemed_by: string | null;
+          redeemed_entry_id: number | null;
+        };
+      };
       admin_update_ride_incident: {
         Args: {
           p_assigned_to: string;
@@ -1132,6 +1182,21 @@ export type Database = {
         Args: {
         };
         Returns: unknown;
+      };
+      redeem_gift_code: {
+        Args: {
+          p_code: string;
+        };
+        Returns: {
+          amount_iqd: number;
+          code: string;
+          created_at: string;
+          created_by: string | null;
+          memo: string | null;
+          redeemed_at: string | null;
+          redeemed_by: string | null;
+          redeemed_entry_id: number | null;
+        };
       };
       create_receipt_from_payment: {
         Args: {

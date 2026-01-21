@@ -288,6 +288,8 @@ export default function WalletPage() {
   const [packageId, setPackageId] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [toast, setToast] = React.useState<string | null>(null);
+  const [giftCode, setGiftCode] = React.useState('');
+  const [giftRedeemBusy, setGiftRedeemBusy] = React.useState(false);
 
   const [withdrawKind, setWithdrawKind] = React.useState<'qicard' | 'asiapay' | 'zaincash'>('zaincash');
   const [withdrawDestination, setWithdrawDestination] = React.useState('');
@@ -429,6 +431,28 @@ export default function WalletPage() {
 
   const acct = walletQ.data;
   const available = acct ? Math.max(0, (acct.balance_iqd ?? 0) - (acct.held_iqd ?? 0)) : 0;
+
+  async function doRedeemGiftCode() {
+    const code = giftCode.trim();
+    if (!code) return;
+    setGiftRedeemBusy(true);
+    try {
+      const { error } = await supabase.rpc('redeem_gift_code', { p_code: code });
+      if (error) throw error;
+      setGiftCode('');
+      setToast('Gift code redeemed. Credits added to your wallet.');
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['wallet_account'] }),
+        qc.invalidateQueries({ queryKey: ['wallet_entries'] }),
+      ]);
+      setTimeout(() => setToast(null), 2500);
+    } catch (err: unknown) {
+      setToast(errorText(err));
+      setTimeout(() => setToast(null), 2500);
+    } finally {
+      setGiftRedeemBusy(false);
+    }
+  }
 
   async function doTopup() {
     if (!providerCode) return setToast('Pick a payment method.');
@@ -671,6 +695,27 @@ export default function WalletPage() {
                 onClick={() => void doTopup()}
               >
                 {busy ? 'Redirecting…' : 'Continue'}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 p-4">
+            <div className="font-semibold">Redeem gift code</div>
+            <div className="text-sm text-gray-500 mt-1">Enter a code from an admin to add credits to your wallet.</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <input
+                className="input flex-1 font-mono"
+                value={giftCode}
+                onChange={(e) => setGiftCode(e.target.value.toUpperCase())}
+                placeholder="ENTER-CODE"
+              />
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={giftRedeemBusy || !giftCode.trim()}
+                onClick={() => void doRedeemGiftCode()}
+              >
+                {giftRedeemBusy ? 'Redeeming…' : 'Redeem'}
               </button>
             </div>
           </div>
