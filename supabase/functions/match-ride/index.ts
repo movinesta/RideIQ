@@ -74,9 +74,10 @@ Deno.serve(async (req) => {
     }
     if (normalizedMessage.includes('function st_dwithin')) {
       return errorJson(
-        'Geospatial matching is unavailable. Please contact support.',
-        500,
-        'MISSING_GEOSPATIAL_EXTENSION',
+        'Geospatial matching is unavailable. Please enable PostGIS and try again.',
+        503,
+        'GEOSPATIAL_UNAVAILABLE',
+        { hint: 'Enable the PostGIS extension to support st_dwithin.' },
       );
     }
     await logAppEvent({
