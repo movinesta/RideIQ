@@ -670,8 +670,7 @@ with check (auth.uid() = rider_id and status = 'cancelled');
 
 -- 2) Enforce match_deadline when driver accepts
 
--- Ensure privileges remain
-grant execute on function public.dispatch_accept_ride(uuid, uuid) to authenticated, service_role;
+-- Ensure privileges remain (handled after function definition below)
 
 -- =====================================================================
 -- MIGRATION: supabase/migrations/20260119000500_session4.sql
