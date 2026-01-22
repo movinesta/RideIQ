@@ -10,6 +10,12 @@
     "build": "pnpm -C apps/web build",
     "preview": "pnpm -C apps/web preview",
     "typecheck": "pnpm -C apps/web typecheck",
-    "lint": "pnpm -C apps/web lint"
+    "lint": "pnpm -C apps/web lint",
+    "test": "pnpm -C apps/web test"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": "^0.25.0"
+    }
   }
 }
