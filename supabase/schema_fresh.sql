@@ -650,13 +650,6 @@ using (
   )
 );
 
--- 7) Restrict access to dispatch functions (Edge Functions only)
-revoke all on function public.dispatch_match_ride(uuid, uuid, numeric, integer, integer, integer) from public;
-revoke all on function public.dispatch_accept_ride(uuid, uuid) from public;
-
-grant execute on function public.dispatch_match_ride(uuid, uuid, numeric, integer, integer, integer) to service_role;
-grant execute on function public.dispatch_accept_ride(uuid, uuid) to service_role;
-
 -- =====================================================================
 -- MIGRATION: supabase/migrations/20260119000400_session2_fix.sql
 -- =====================================================================
