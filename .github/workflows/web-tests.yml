@@ -1,0 +1,58 @@
+name: web-tests
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Configure npm registry
+        run: |
+          npm config set registry https://registry.npmjs.org/
+          pnpm config set registry https://registry.npmjs.org/
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+          npm config set fetch-timeout 600000
+
+      - name: Guard against internal registry lockfile
+        run: |
+          if grep -R "packages.applied-caas-gateway" pnpm-lock.yaml; then
+            echo "pnpm-lock.yaml contains internal registry URLs. Regenerate lockfile using npmjs registry."
+            exit 1
+          fi
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Schema ↔ code contract check
+        run: pnpm run schema:check
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Unit tests
+        run: pnpm run test
+
+      - name: Build
+        run: pnpm run build

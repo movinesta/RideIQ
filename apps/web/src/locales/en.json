@@ -1,0 +1,191 @@
+{
+  "app": {
+    "name": "RideIQ"
+  },
+  "nav": {
+    "rider": "Rider",
+    "scheduled": "Scheduled",
+    "driver": "Driver",
+    "wallet": "Wallet",
+    "history": "History",
+    "admin": "Admin"
+  },
+  "language": {
+    "label": "Language",
+    "english": "English",
+    "arabic": "Arabic"
+  },
+  "quote": {
+    "title": "Fare estimate",
+    "total": "Estimated total",
+    "base": "Base fare",
+    "distance": "Distance",
+    "perKm": "per km",
+    "product": "Ride type multiplier",
+    "surge": "Surge multiplier",
+    "surgeCapped": "Surge capped to",
+    "minFare": "Minimum fare",
+    "note": "Final price may change if pickup/dropoff changes or if the ride is significantly longer than estimated."
+  },
+  "rideType": {
+    "label": "Ride type",
+    "standard": "Standard",
+    "premium": "Premium",
+    "family": "Family (5+ seats)",
+    "womenOnly": "Women Only (female driver)"
+  },
+  "prefs": {
+    "preferFemale": "Prefer female driver"
+  },
+  "buttons": {
+    "create": "Create ride request",
+    "createScheduled": "Create scheduled ride",
+    "loadingQuote": "Loading quote…"
+  },
+  "common": {
+    "back": "Back",
+    "save": "Save",
+    "saved": "Saved",
+    "add": "Add",
+    "added": "Added",
+    "delete": "Delete",
+    "deleted": "Deleted",
+    "loading": "Loading…",
+    "error": "Error",
+    "confirmDelete": "Delete this item?",
+    "close": "Close",
+    "cancel": "Cancel",
+    "on": "On",
+    "off": "Off"
+  },
+  "safety": {
+    "title": "Safety Toolkit",
+    "subtitle": "Quick actions to help you stay safe during the trip.",
+    "open": "Safety",
+    "close": "Close",
+    "notAvailable": "Safety tools are available only during an active trip.",
+    "error": "Error",
+    "share": {
+      "title": "Share trip",
+      "desc": "Create a private link so family or friends can track this trip.",
+      "ttl": "Expires",
+      "create": "Create link",
+      "link": "Share link",
+      "copy": "Copy",
+      "open": "Open",
+      "whatsapp": "Share via WhatsApp",
+      "toContact": "Send",
+      "copied": "Link copied",
+      "shared": "Shared"
+    },
+    "contacts": {
+      "title": "Trusted contacts",
+      "desc": "Add people you trust so you can quickly share a tracking link or SOS details.",
+      "manage": "Manage",
+      "none": "No trusted contacts yet.",
+      "listTitle": "Your contacts",
+      "activeCount": "Active: {{count}}",
+      "name": "Name",
+      "phone": "Phone",
+      "relationship": "Relationship (optional)",
+      "active": "Active",
+      "maxActive": "You can only have up to 5 active trusted contacts.",
+      "testTitle": "Test message",
+      "testHint": "Send a test message to confirm delivery setup (WhatsApp/SMS provider).",
+      "channelWhatsApp": "WhatsApp",
+      "channelSMS": "SMS",
+      "sendTest": "Send test",
+      "testSent": "Test message sent."
+    },
+    "settings": {
+      "autoShare": "Auto-share when trip starts",
+      "autoShareHint": "Creates a share link automatically when the trip moves to in-progress.",
+      "autoNotify": "Auto-notify on SOS",
+      "autoNotifyHint": "Logs a trusted contact event when SOS is triggered.",
+      "ttl": "Default share TTL (minutes)",
+      "ttlHint": "How long a shared link should stay valid (5–1440 minutes).",
+      "pinMode": "Pickup PIN mode",
+      "pinModeHint": "When enabled, riders get a 4-digit PIN and drivers must verify it before starting the trip.",
+      "pinModeOff": "Off",
+      "pinModeEveryRide": "Every ride",
+      "pinModeNightOnly": "Night only (10pm–6am)"
+    },
+    "sos": {
+      "title": "Emergency SOS",
+      "desc": "Triggers an SOS incident and notifies the RideIQ safety team.",
+      "activate": "Activate SOS",
+      "confirm": "Activate SOS now? Use only if you are in danger.",
+      "done": "SOS sent. Help will contact you."
+    },
+    "report": {
+      "title": "Report a problem",
+      "desc": "Send a report linked to this trip.",
+      "category": "Category",
+      "severity": "Severity",
+      "details": "Details",
+      "placeholder": "Describe what happened…",
+      "note": "Reports appear in Admin → Incidents.",
+      "send": "Submit report",
+      "sent": "Report sent"
+    },
+    "pickupPin": {
+      "title": "Pickup PIN",
+      "hint": "Use a 4-digit PIN to confirm you're getting into the right car.",
+      "reveal": "Show PIN",
+      "refresh": "Refresh",
+      "notRequired": "PIN is not required for this ride.",
+      "alreadyVerified": "PIN already verified.",
+      "verifiedTitle": "PIN verified",
+      "verifiedHint": "You're all set. The driver can start the trip.",
+      "driverTitle": "Verify Pickup PIN",
+      "driverHint": "Ask the rider for their 4-digit PIN and enter it to start the trip.",
+      "driverModalHint": "Tip: only accept the PIN in person at pickup.",
+      "enter": "Enter PIN",
+      "verify": "Verify",
+      "invalid": "Incorrect PIN",
+      "remaining": "{{count}} attempts left",
+      "locked": "Too many attempts. Try again later.",
+      "missingSecret": "Server is missing PIN_SECRET. Ask admin to set it in Supabase Edge Function secrets.",
+      "driverVerified": "PIN verified.",
+      "requiredBeforeStart": "Pickup PIN required before starting.",
+      "driverRequire": "Require Pickup PIN",
+      "driverRequireHint": "If enabled, your rides will require a verified PIN before starting (in-progress)."
+    },
+    "ridecheck": {
+      "title": "RideCheck",
+      "prompt": "Are you OK? We detected something unusual.",
+      "promptHint": "Choose an option. If you need help, we can alert support.",
+      "open": "Open",
+      "thanks": "Thanks — stay safe.",
+      "sosFailed": "Couldn't create SOS incident. Please try again.",
+      "kinds": {
+        "generic": "Safety check",
+        "gpsStale": "No location update",
+        "longStop": "Long stop",
+        "routeDeviation": "Route deviation"
+      },
+      "actions": {
+        "ok": "I'm OK",
+        "needHelp": "I need help",
+        "falseAlarm": "False alarm"
+      }
+    }
+  },
+  "share": {
+    "title": "Trip sharing",
+    "subtitle": "This page updates automatically while the trip is active.",
+    "loading": "Loading trip…",
+    "error": "Unable to load",
+    "notFound": "Trip not found or link expired.",
+    "ride": "Ride",
+    "status": "Status",
+    "created": "Created",
+    "pickup": "Pickup",
+    "dropoff": "Dropoff",
+    "vehicle": "Vehicle",
+    "plateSuffix": "Plate suffix",
+    "openMaps": "Open in Maps",
+    "lastLocation": "Last location",
+    "noLocation": "No location updates yet"
+  }
+}

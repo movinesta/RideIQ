@@ -1,0 +1,185 @@
+project_id = "rideshare-local"
+
+[api]
+port = 54321
+schemas = ["public", "storage", "auth"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+port = 54323
+
+[inbucket]
+port = 54324
+
+[auth]
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173", "http://127.0.0.1:5173"]
+jwt_expiry = 3600
+enable_signup = true
+
+
+# Edge Function auth model
+# - verify_jwt is disabled at the gateway for ALL functions.
+# - For authenticated endpoints, each function calls requireUser() to validate the bearer token.
+# - Webhooks/cron endpoints use their own secrets/signatures.
+# See Supabase docs: Functions Auth & verify_jwt notes.
+
+
+# Payment provider callbacks (no user JWT)
+[functions.zaincash-return]
+verify_jwt = false
+
+[functions.qicard-notify]
+verify_jwt = false
+
+[functions.qicard-return]
+verify_jwt = false
+
+[functions.asiapay-notify]
+verify_jwt = false
+
+[functions.asiapay-return]
+verify_jwt = false
+
+
+# Scheduled / maintenance endpoints (protected by CRON_SECRET)
+[functions.topup-reconcile]
+verify_jwt = false
+
+[functions.expire-rides]
+verify_jwt = false
+
+[functions.driver-stats-rollup]
+verify_jwt = false
+
+[functions.driver-leaderboard-refresh]
+verify_jwt = false
+
+[functions.stats-rollup]
+verify_jwt = false
+
+[functions.notifications-dispatch]
+verify_jwt = false
+
+[functions.trusted-contacts-dispatch]
+verify_jwt = false
+
+
+# Public support content endpoints (read-only)
+[functions.support-articles]
+verify_jwt = false
+
+[functions.support-article-detail]
+verify_jwt = false
+
+[functions.support-categories]
+verify_jwt = false
+
+
+# App endpoints (manual auth inside function when required)
+[functions.achievement-claim]
+verify_jwt = false
+
+[functions.device-token-upsert]
+verify_jwt = false
+
+[functions.driver-accept]
+verify_jwt = false
+
+[functions.kyc-doc-url]
+verify_jwt = false
+
+[functions.kyc-required-documents]
+verify_jwt = false
+
+[functions.kyc-submit]
+verify_jwt = false
+
+[functions.match-ride]
+verify_jwt = false
+
+[functions.notifications-send]
+verify_jwt = false
+
+[functions.profile-avatar-url]
+verify_jwt = false
+
+[functions.referral-apply]
+verify_jwt = false
+
+[functions.referral-claim]
+verify_jwt = false
+
+[functions.referral-code]
+verify_jwt = false
+
+[functions.referral-redeem]
+verify_jwt = false
+
+[functions.referral-status]
+verify_jwt = false
+
+[functions.ride-chat-list]
+verify_jwt = false
+
+[functions.ride-chat-mark-read]
+verify_jwt = false
+
+[functions.ride-chat-media-url]
+verify_jwt = false
+
+[functions.ride-chat-send]
+verify_jwt = false
+
+[functions.ride-transition]
+verify_jwt = false
+
+[functions.safety-sos]
+verify_jwt = false
+
+[functions.support-message]
+verify_jwt = false
+
+[functions.support-ticket-create]
+verify_jwt = false
+
+[functions.support-ticket-detail]
+verify_jwt = false
+
+[functions.support-ticket-list]
+verify_jwt = false
+
+[functions.support-ticket-reply]
+verify_jwt = false
+
+[functions.topup-check]
+verify_jwt = false
+
+[functions.topup-create]
+verify_jwt = false
+
+[functions.trip-share-create]
+verify_jwt = false
+
+[functions.trip-share-view]
+verify_jwt = false
+
+[functions.scheduled-ride-create]
+verify_jwt = false
+
+[functions.scheduled-ride-list]
+verify_jwt = false
+
+[functions.scheduled-ride-cancel]
+verify_jwt = false
+
+[functions.ride-intent-create]
+verify_jwt = false
+
+[functions.admin-ride-intent-convert]
+verify_jwt = false
