@@ -71,4 +71,4 @@ serve(async (req) => {
   if (mErr) return errorJson(mErr.message, 400, "DB_ERROR");
 
   return json({ ok: true, ticket_id: ticket.id });
-}));
+});
