@@ -9,6 +9,22 @@ export type RequestContext = {
   error: (message: string, extra?: Record<string, unknown>) => void;
 };
 
+function createRequestId(incoming: string | null): string {
+  if (incoming && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(incoming)) {
+    return incoming;
+  }
+
+  try {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // Fall back to a non-UUID request id.
+  }
+
+  return `req-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
 function makeLogger(level: 'info' | 'error', fn: string, requestId: string) {
   return (message: string, extra: Record<string, unknown> = {}) => {
     const payload = {
@@ -37,10 +53,7 @@ export async function withRequestContext(
   req: Request,
   handler: (ctx: RequestContext) => Promise<Response>,
 ): Promise<Response> {
-  const incoming = req.headers.get('x-request-id');
-  const requestId = incoming && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(incoming)
-    ? incoming
-    : crypto.randomUUID();
+  const requestId = createRequestId(req.headers.get('x-request-id'));
   const startedAtMs = Date.now();
   const ctx: RequestContext = {
     fn,
