@@ -119,4 +119,4 @@ Deno.serve((req) => withRequestContext('ridecheck-respond', req, async (ctx) => 
     const msg = e instanceof Error ? e.message : String(e);
     return errorJson(msg, 500, 'INTERNAL');
   }
-}))); 
+}));
