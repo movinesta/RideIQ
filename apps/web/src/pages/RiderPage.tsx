@@ -51,7 +51,7 @@ type RideCheckEventRow = {
   kind: string;
   status: string;
   created_at: string;
-  metadata: any;
+  metadata: Record<string, unknown> | null;
 };
 
 async function getUid(): Promise<string> {
@@ -274,7 +274,7 @@ export default function RiderPage() {
     if (ridecheckEvent && ridecheckEvent.status === 'open') {
       setRidecheckOpen(true);
     }
-  }, [ridecheckEvent?.id]);
+  }, [ridecheckEvent]);
 
   const revealPickupPin = async () => {
     if (!activeRide?.id) return;

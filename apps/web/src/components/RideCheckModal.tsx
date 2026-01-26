@@ -9,7 +9,7 @@ type RideCheckEvent = {
   kind: string;
   status: string;
   created_at?: string;
-  metadata?: any;
+  metadata?: Record<string, unknown> | null;
 };
 
 type Props = {

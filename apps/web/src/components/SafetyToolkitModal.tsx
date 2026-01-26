@@ -21,6 +21,17 @@ type TripShareCreateResponse = {
   requestId?: string;
 };
 
+type TrustedContact = {
+  id: string;
+  name: string;
+  phone: string;
+  relationship: string | null;
+};
+
+type SosResponse = {
+  share?: { token?: string };
+  trusted_contacts?: TrustedContact[];
+};
 
 export default function SafetyToolkitModal({ open, onClose, rideId, rideStatus }: Props) {
   const { t } = useTranslation();
@@ -30,9 +41,7 @@ export default function SafetyToolkitModal({ open, onClose, rideId, rideStatus }
   const [shareUrl, setShareUrl] = React.useState<string | null>(null);
   const [ttlMinutes, setTtlMinutes] = React.useState<number>(120);
 
-  const [trustedContacts, setTrustedContacts] = React.useState<
-    Array<{ id: string; name: string; phone: string; relationship: string | null }>
-  >([]);
+  const [trustedContacts, setTrustedContacts] = React.useState<TrustedContact[]>([]);
 
   const [reportCategory, setReportCategory] = React.useState<string>('safety');
   const [reportSeverity, setReportSeverity] = React.useState<'low' | 'medium' | 'high' | 'critical'>('high');
@@ -57,7 +66,8 @@ export default function SafetyToolkitModal({ open, onClose, rideId, rideStatus }
           .eq('is_active', true)
           .order('created_at', { ascending: true })
           .limit(5);
-        if (!cancelled) setTrustedContacts((data as any) || []);
+        const contacts = (data ?? []) as TrustedContact[];
+        if (!cancelled) setTrustedContacts(contacts);
       } catch {
         // ignore
       }
@@ -209,7 +219,7 @@ export default function SafetyToolkitModal({ open, onClose, rideId, rideStatus }
 
                 {trustedContacts.length ? (
                   <div className="mt-3 space-y-2">
-                    {trustedContacts.map((c: any) => (
+                    {trustedContacts.map((c) => (
                       <div key={c.id} className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 p-3">
                         <div>
                           <div className="text-sm font-medium">{c.name}</div>
@@ -268,10 +278,10 @@ export default function SafetyToolkitModal({ open, onClose, rideId, rideStatus }
                       }
                     }
 
-                    const { data } = await invokeEdge('safety-sos', payload);
-                    const token = (data as any)?.share?.token;
+                    const { data } = await invokeEdge<SosResponse>('safety-sos', payload);
+                    const token = data?.share?.token;
                     if (token) setShareUrl(buildShareUrl(String(token)));
-                    const contacts = (data as any)?.trusted_contacts;
+                    const contacts = data?.trusted_contacts;
                     if (Array.isArray(contacts)) setTrustedContacts(contacts);
                     setToast(t('safety.sos.done'));
                   } catch (e: unknown) {

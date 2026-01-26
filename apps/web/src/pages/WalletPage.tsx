@@ -137,7 +137,7 @@ type RealtimePayload<T> = {
 };
 
 function getTripShareUrlFromNotification(n: UserNotificationRow): string | null {
-  const token = (n?.data as any)?.token ?? (n?.data as any)?.share?.token;
+  const token = n.data.token ?? (typeof n.data.share === 'object' && n.data.share !== null ? (n.data.share as Record<string, unknown>).token : undefined);
   if (typeof token !== 'string') return null;
   const t = token.trim();
   if (!t) return null;
@@ -145,8 +145,8 @@ function getTripShareUrlFromNotification(n: UserNotificationRow): string | null 
 }
 
 function getTripShareExpiresAt(n: UserNotificationRow): string | null {
-  const v = (n?.data as any)?.expires_at ?? (n?.data as any)?.share?.expires_at;
-  return typeof v === 'string' && v.trim() ? v : null;
+  const expiresAt = n.data.expires_at ?? (typeof n.data.share === 'object' && n.data.share !== null ? (n.data.share as Record<string, unknown>).expires_at : undefined);
+  return typeof expiresAt === 'string' && expiresAt.trim() ? expiresAt : null;
 }
 
 function submitPost(url: string, fields: Record<string, string>) {
@@ -1064,10 +1064,9 @@ export default function WalletPage() {
 
           <div className="divide-y">
             {(notificationsQ.data ?? []).map((n) => {
-              const token = (n.data as any)?.token;
-              const url = n.kind === 'trip_share' && typeof token === 'string' && token.trim() ? buildShareUrl(token.trim()) : null;
-              const expiresAt = (n.data as any)?.expires_at;
-              const expiresLabel = expiresAt ? new Date(String(expiresAt)).toLocaleString() : null;
+              const url = n.kind === 'trip_share' ? getTripShareUrlFromNotification(n) : null;
+              const expiresAt = getTripShareExpiresAt(n);
+              const expiresLabel = expiresAt ? new Date(expiresAt).toLocaleString() : null;
 
               return (
                 <div key={n.id} className="py-3 flex items-start justify-between gap-3">
