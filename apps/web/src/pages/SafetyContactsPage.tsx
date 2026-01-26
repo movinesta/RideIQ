@@ -50,13 +50,19 @@ async function fetchSettings(): Promise<SafetySettingsRow> {
     .maybeSingle();
   if (error) throw error;
 
+  const rawPinMode = data?.pin_verification_mode;
+  const pinMode: SafetySettingsRow['pin_verification_mode'] =
+    rawPinMode === 'off' || rawPinMode === 'every_ride' || rawPinMode === 'night_only'
+      ? rawPinMode
+      : 'off';
+
   // Default values if the row does not exist yet.
   return {
     user_id: uid,
     auto_share_on_trip_start: !!data?.auto_share_on_trip_start,
     auto_notify_on_sos: data?.auto_notify_on_sos ?? true,
     default_share_ttl_minutes: typeof data?.default_share_ttl_minutes === 'number' ? data.default_share_ttl_minutes : 120,
-    pin_verification_mode: (data?.pin_verification_mode as any) ?? 'off',
+    pin_verification_mode: pinMode,
   };
 }
 
@@ -84,7 +90,7 @@ export default function SafetyContactsPage() {
   const [autoShare, setAutoShare] = React.useState(false);
   const [autoNotify, setAutoNotify] = React.useState(true);
   const [ttl, setTtl] = React.useState('120');
-const [pinMode, setPinMode] = React.useState<'off' | 'every_ride' | 'night_only'>('off');
+  const [pinMode, setPinMode] = React.useState<'off' | 'every_ride' | 'night_only'>('off');
   const [testChannel, setTestChannel] = React.useState<'whatsapp' | 'sms'>('whatsapp');
 
   React.useEffect(() => {
@@ -136,7 +142,11 @@ const [pinMode, setPinMode] = React.useState<'off' | 'every_ride' | 'night_only'
 
           <label className="text-sm">
             <div className="label">{t('safety.settings.pinMode')}</div>
-            <select className="input mt-2" value={pinMode} onChange={(e) => setPinMode(e.target.value as any)}>
+            <select
+              className="input mt-2"
+              value={pinMode}
+              onChange={(e) => setPinMode(e.target.value as SafetySettingsRow['pin_verification_mode'])}
+            >
               <option value="off">{t('safety.settings.pinModeOff')}</option>
               <option value="every_ride">{t('safety.settings.pinModeEveryRide')}</option>
               <option value="night_only">{t('safety.settings.pinModeNightOnly')}</option>
@@ -246,21 +256,21 @@ const [pinMode, setPinMode] = React.useState<'off' | 'every_ride' | 'night_only'
           {contactsQ.error ? <div className="text-sm text-red-600">{t('common.error')}: {errorText(contactsQ.error)}</div> : null}
 
           <div className="rounded-2xl border border-gray-200 bg-white p-4 flex items-center justify-between gap-3">
-  <div>
-    <div className="text-sm font-semibold">{t('safety.contacts.testTitle')}</div>
-    <div className="text-xs text-gray-500 mt-1">{t('safety.contacts.testHint')}</div>
-  </div>
-  <div className="flex items-center gap-2">
-    <select
-      className="input"
-      value={testChannel}
-      onChange={(e) => setTestChannel((e.target.value as any) === 'sms' ? 'sms' : 'whatsapp')}
-    >
-      <option value="whatsapp">{t('safety.contacts.channelWhatsApp')}</option>
-      <option value="sms">{t('safety.contacts.channelSMS')}</option>
-    </select>
-  </div>
-</div>
+          <div>
+            <div className="text-sm font-semibold">{t('safety.contacts.testTitle')}</div>
+            <div className="text-xs text-gray-500 mt-1">{t('safety.contacts.testHint')}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              className="input"
+              value={testChannel}
+              onChange={(e) => setTestChannel(e.target.value === 'sms' ? 'sms' : 'whatsapp')}
+            >
+              <option value="whatsapp">{t('safety.contacts.channelWhatsApp')}</option>
+              <option value="sms">{t('safety.contacts.channelSMS')}</option>
+            </select>
+          </div>
+        </div>
 
 {contacts.map((c) => (
             <div key={c.id} className="rounded-2xl border border-gray-200 bg-white p-4 flex items-center justify-between gap-3">
@@ -298,27 +308,27 @@ const [pinMode, setPinMode] = React.useState<'off' | 'every_ride' | 'night_only'
                 </label>
 
                 <button
-  className="btn"
-  disabled={busy || !c.is_active}
-  onClick={async () => {
-    setBusy(true);
-    setToast(null);
-    try {
-      const { data, error } = await supabase.functions.invoke('trusted-contacts-test', {
-        body: { contact_id: c.id, channel: testChannel },
-      });
-      if (error) throw error;
-      if (!data?.ok) {
-        throw new Error('Test failed');
-      }
-      setToast(t('safety.contacts.testSent'));
-    } catch (e: unknown) {
-      setToast(`${t('common.error')}: ${errorText(e)}`);
-    } finally {
-      setBusy(false);
-    }
-  }}
->
+                  className="btn"
+                  disabled={busy || !c.is_active}
+                  onClick={async () => {
+                    setBusy(true);
+                    setToast(null);
+                    try {
+                      const { data, error } = await supabase.functions.invoke('trusted-contacts-test', {
+                        body: { contact_id: c.id, channel: testChannel },
+                      });
+                      if (error) throw error;
+                      if (!data?.ok) {
+                        throw new Error('Test failed');
+                      }
+                      setToast(t('safety.contacts.testSent'));
+                    } catch (e: unknown) {
+                      setToast(`${t('common.error')}: ${errorText(e)}`);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
   {t('safety.contacts.sendTest')}
 </button>
 

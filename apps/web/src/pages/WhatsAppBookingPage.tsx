@@ -1,4 +1,5 @@
 import React from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { errorText } from '../lib/errors';
@@ -31,11 +32,17 @@ async function fetchBooking(token: string): Promise<BookingView> {
     },
   });
 
-  const data = (await res.json().catch(() => ({}))) as any;
+  const data = (await res.json().catch(() => ({}))) as unknown;
   if (!res.ok) {
-    return { error: typeof data?.error === 'string' ? data.error : `HTTP ${res.status}` };
+    if (typeof data === 'object' && data !== null && 'error' in data && typeof data.error === 'string') {
+      return { error: data.error };
+    }
+    return { error: `HTTP ${res.status}` };
   }
-  return data as BookingView;
+  if (typeof data === 'object' && data !== null) {
+    return data as BookingView;
+  }
+  return {};
 }
 
 export default function WhatsAppBookingPage() {
@@ -44,7 +51,7 @@ export default function WhatsAppBookingPage() {
   const [booking, setBooking] = React.useState<BookingView | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
 
-  const [session, setSession] = React.useState<any>(null);
+  const [session, setSession] = React.useState<Session | null>(null);
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [authMode, setAuthMode] = React.useState<'signin' | 'signup'>('signin');

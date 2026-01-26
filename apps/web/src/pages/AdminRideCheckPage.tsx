@@ -128,7 +128,7 @@ export default function AdminRideCheckPage() {
               <select
                 className="ml-2 rounded-xl border border-gray-200 px-2 py-1 text-sm"
                 value={status}
-                onChange={(e) => setStatus(e.target.value as any)}
+                onChange={(e) => setStatus(e.target.value as typeof status)}
               >
                 <option value="open">open</option>
                 <option value="resolved">resolved</option>
