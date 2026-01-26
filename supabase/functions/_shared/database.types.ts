@@ -25,7 +25,7 @@ export type Database = {
       topup_status: 'created' | 'pending' | 'succeeded' | 'failed';
       wallet_entry_kind: 'topup' | 'ride_fare' | 'adjustment';
       wallet_hold_kind: 'ride' | 'withdraw';
-      wallet_hold_status: 'active' | 'captured' | 'released';
+      wallet_hold_status: 'active' | 'captured' | 'held' | 'released';
       withdraw_payout_kind: 'qicard' | 'asiapay' | 'zaincash';
       withdraw_request_status: 'requested' | 'approved' | 'rejected' | 'paid' | 'cancelled';
     };
