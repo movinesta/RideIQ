@@ -24,10 +24,14 @@ function createRequestId(incoming: string | null): string {
   }
 
   if (cryptoApi?.getRandomValues) {
-    const bytes = new Uint8Array(16);
-    cryptoApi.getRandomValues(bytes);
-    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-    return `req-${hex}`;
+    try {
+      const bytes = new Uint8Array(16);
+      cryptoApi.getRandomValues(bytes);
+      const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      return `req-${hex}`;
+    } catch {
+      // Ignore and fall back.
+    }
   }
 
   return `req-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
