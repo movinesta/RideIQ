@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.92.0?target=deno';
+import { createClient } from 'npm:@supabase/supabase-js@2.92.0';
 import { SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL } from './config.ts';
 
 export function createAnonClient(req: Request) {
