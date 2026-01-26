@@ -9,6 +9,34 @@ export type RequestContext = {
   error: (message: string, extra?: Record<string, unknown>) => void;
 };
 
+function createRequestId(incoming: string | null): string {
+  if (incoming && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(incoming)) {
+    return incoming;
+  }
+
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi?.randomUUID) {
+    try {
+      return cryptoApi.randomUUID();
+    } catch {
+      // Ignore and fall back.
+    }
+  }
+
+  if (cryptoApi?.getRandomValues) {
+    try {
+      const bytes = new Uint8Array(16);
+      cryptoApi.getRandomValues(bytes);
+      const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      return `req-${hex}`;
+    } catch {
+      // Ignore and fall back.
+    }
+  }
+
+  return `req-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
 function makeLogger(level: 'info' | 'error', fn: string, requestId: string) {
   return (message: string, extra: Record<string, unknown> = {}) => {
     const payload = {
@@ -37,10 +65,7 @@ export async function withRequestContext(
   req: Request,
   handler: (ctx: RequestContext) => Promise<Response>,
 ): Promise<Response> {
-  const incoming = req.headers.get('x-request-id');
-  const requestId = incoming && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(incoming)
-    ? incoming
-    : crypto.randomUUID();
+  const requestId = createRequestId(req.headers.get('x-request-id'));
   const startedAtMs = Date.now();
   const ctx: RequestContext = {
     fn,
