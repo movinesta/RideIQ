@@ -12,7 +12,7 @@ export type Json =
 export type Database = {
   public: {
     Enums: {
-      driver_status: 'offline' | 'available' | 'on_trip' | 'suspended';
+      driver_status: 'offline' | 'available' | 'on_trip' | 'suspended' | 'reserved';
       incident_severity: 'low' | 'medium' | 'high' | 'critical';
       incident_status: 'open' | 'triaging' | 'resolved' | 'closed';
       kyc_status: 'unverified' | 'pending' | 'verified' | 'rejected';

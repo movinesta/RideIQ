@@ -756,7 +756,7 @@ begin
   if rr.status = 'matched' and rr.match_deadline is not null and rr.match_deadline <= now() then
     update public.drivers
       set status = 'available'
-      where id = rr.assigned_driver_id and status = 'assigned';
+      where id = rr.assigned_driver_id and status = 'reserved';
     update public.ride_requests
       set status = 'requested',
           assigned_driver_id = null,
@@ -849,9 +849,9 @@ begin
 
     exit when candidate is null;
 
-    -- Mark driver as assigned
+    -- Reserve driver while matched
     update public.drivers
-      set status = 'assigned'
+      set status = 'reserved'
       where id = candidate
         and status = 'available';
 
