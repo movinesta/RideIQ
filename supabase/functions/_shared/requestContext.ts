@@ -51,12 +51,11 @@ export async function withRequestContext(
     error: makeLogger('error', fn, requestId),
   };
 
-  // Avoid noisy logs for CORS preflight.
-  if (req.method === 'OPTIONS') {
-    return handler(ctx);
-  }
+  const isOptions = req.method === 'OPTIONS';
 
-  ctx.log('request.start', { method: req.method, path: new URL(req.url).pathname });
+  if (!isOptions) {
+    ctx.log('request.start', { method: req.method, path: new URL(req.url).pathname });
+  }
 
   try {
     const res = await handler(ctx);
@@ -67,7 +66,9 @@ export async function withRequestContext(
     attachCors(headers);
 
     const wrapped = new Response(res.body, { status: res.status, headers });
-    ctx.log('request.end', { status: res.status, duration_ms: Date.now() - startedAtMs });
+    if (!isOptions) {
+      ctx.log('request.end', { status: res.status, duration_ms: Date.now() - startedAtMs });
+    }
     return wrapped;
   } catch (err) {
     ctx.error('request.unhandled_error', { error: String(err), duration_ms: Date.now() - startedAtMs });
