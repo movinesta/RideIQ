@@ -24,7 +24,7 @@ export function getCorsHeaders(): Record<string, string> {
     // If allowOrigin is '*', browsers will not send credentials anyway.
     // We deliberately do not set Access-Control-Allow-Credentials.
     'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
     // Some endpoints use non-POST verbs (admin tools, cancellations, etc.)
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     // Allow the client to read request correlation ids.
