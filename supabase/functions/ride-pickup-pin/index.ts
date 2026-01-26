@@ -109,4 +109,4 @@ Deno.serve((req) => withRequestContext('ride-pickup-pin', req, async (ctx) => {
     const msg = e instanceof Error ? e.message : String(e);
     return errorJson(msg, 500, 'INTERNAL');
   }
-}))); 
+}));
