@@ -791,7 +791,7 @@ begin
   select coalesce(sum(h.amount_iqd), 0)::bigint into v_held
   from public.wallet_holds h
   where h.user_id = rr.rider_id
-    and h.status = 'held';
+    and h.status = 'active';
 
   v_available := v_balance - v_held;
 
