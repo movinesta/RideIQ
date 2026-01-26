@@ -14,12 +14,20 @@ function createRequestId(incoming: string | null): string {
     return incoming;
   }
 
-  try {
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-      return crypto.randomUUID();
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi?.randomUUID) {
+    try {
+      return cryptoApi.randomUUID();
+    } catch {
+      // Ignore and fall back.
     }
-  } catch {
-    // Fall back to a non-UUID request id.
+  }
+
+  if (cryptoApi?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes);
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+    return `req-${hex}`;
   }
 
   return `req-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
