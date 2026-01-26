@@ -11,7 +11,7 @@ import RideCheckModal from '../components/RideCheckModal';
 
 type DriverRow = {
   id: string;
-  status: 'offline' | 'available' | 'reserved' | 'on_trip' | 'suspended';
+  status: 'offline' | 'available' | 'assigned' | 'reserved' | 'on_trip' | 'suspended';
   vehicle_type: string | null;
   rating_avg: number;
   trips_count: number;
@@ -386,13 +386,15 @@ export default function DriverPage() {
   const status = driver.data?.status ?? null;
   const kycStatus = kyc.data?.status ?? 'unverified';
   const kycVerified = kycStatus === 'verified';
-  const isOnline = status === 'available' || status === 'reserved' || status === 'on_trip';
+  const isOnline = status === 'available' || status === 'assigned' || status === 'reserved' || status === 'on_trip';
   const canToggleOnline = status === 'available' || (status === 'offline' && kycVerified);
   const toggleLabel =
     status === 'offline'
       ? 'Go online'
       : status === 'available'
         ? 'Go offline'
+        : status === 'assigned'
+          ? 'Assigned'
         : status === 'reserved'
           ? 'Reserved (matched)'
           : status === 'on_trip'
@@ -654,7 +656,7 @@ export default function DriverPage() {
               <button
                 className={status === 'offline' ? 'btn btn-primary' : 'btn'}
                 disabled={busy || !canToggleOnline}
-                title={!canToggleOnline ? 'You cannot change availability while reserved / on trip.' : undefined}
+                title={!canToggleOnline ? 'You cannot change availability while assigned / reserved / on trip.' : undefined}
                 onClick={async () => {
                   setBusy(true);
                   setToast(null);

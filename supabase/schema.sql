@@ -402,6 +402,7 @@ ALTER TYPE public.app_event_level OWNER TO postgres;
 CREATE TYPE public.driver_status AS ENUM (
     'offline',
     'available',
+    'assigned',
     'on_trip',
     'suspended',
     'reserved'
@@ -2193,7 +2194,7 @@ begin
   end if;
 
   -- ensure driver is reserved
-  if not exists (select 1 from public.drivers d where d.id = p_driver_id and d.status = 'reserved') then
+  if not exists (select 1 from public.drivers d where d.id = p_driver_id and d.status in ('reserved', 'assigned')) then
     raise exception 'driver_not_reserved';
   end if;
 
@@ -2279,7 +2280,7 @@ begin
   if rr.status = 'matched' and rr.match_deadline is not null and rr.match_deadline <= now() then
     update public.drivers
       set status = 'available'
-    where id = rr.assigned_driver_id and status = 'reserved';
+    where id = rr.assigned_driver_id and status in ('reserved', 'assigned');
 
     update public.ride_requests
       set status = 'requested',
@@ -2364,7 +2365,7 @@ begin
     exit when candidate is null;
 
     update public.drivers
-      set status = 'reserved'
+      set status = 'assigned'
     where public.drivers.id = candidate and public.drivers.status = 'available';
 
     if not found then
@@ -2391,7 +2392,7 @@ begin
     exception when others then
       update public.drivers
         set status = 'available'
-      where id = candidate and status = 'reserved';
+      where id = candidate and status in ('reserved', 'assigned');
       raise;
     end;
 
@@ -2399,7 +2400,7 @@ begin
 
     update public.drivers
       set status = 'available'
-    where id = candidate and status = 'reserved';
+    where id = candidate and status in ('reserved', 'assigned');
   end loop;
 
   return query select rr.id, rr.status, rr.assigned_driver_id, rr.match_deadline, rr.match_attempts, rr.matched_at;
@@ -3828,7 +3829,7 @@ begin
       update public.drivers
         set status = 'available'
       where id = old.assigned_driver_id
-        and status = 'reserved';
+        and status in ('reserved', 'assigned');
     end if;
   end if;
   return null;
@@ -26291,4 +26292,3 @@ BEGIN
   $p$, _owner_expr);
 
 END $$;
-
