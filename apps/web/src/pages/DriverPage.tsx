@@ -11,7 +11,7 @@ import RideCheckModal from '../components/RideCheckModal';
 
 type DriverRow = {
   id: string;
-  status: 'offline' | 'available' | 'reserved' | 'on_trip' | 'suspended';
+  status: 'offline' | 'available' | 'assigned' | 'reserved' | 'on_trip' | 'suspended';
   vehicle_type: string | null;
   rating_avg: number;
   trips_count: number;
@@ -74,14 +74,14 @@ type RideCheckEventRow = {
   kind: string;
   status: string;
   created_at: string;
-  metadata: any;
+  metadata: Record<string, unknown> | null;
 };
 
 type EdgeErrorPayload = {
   error?: string;
   code?: string;
   hint?: string;
-  [k: string]: any;
+  [k: string]: unknown;
 };
 
 async function getUid(): Promise<string> {
@@ -304,7 +304,7 @@ export default function DriverPage() {
     if (ridecheckEvent && ridecheckEvent.status === 'open') {
       setRidecheckOpen(true);
     }
-  }, [ridecheckEvent?.id]);
+  }, [ridecheckEvent]);
 
   const [geo, setGeo] = React.useState<GeoState>({
     tracking: false,
@@ -386,13 +386,15 @@ export default function DriverPage() {
   const status = driver.data?.status ?? null;
   const kycStatus = kyc.data?.status ?? 'unverified';
   const kycVerified = kycStatus === 'verified';
-  const isOnline = status === 'available' || status === 'reserved' || status === 'on_trip';
+  const isOnline = status === 'available' || status === 'assigned' || status === 'reserved' || status === 'on_trip';
   const canToggleOnline = status === 'available' || (status === 'offline' && kycVerified);
   const toggleLabel =
     status === 'offline'
       ? 'Go online'
       : status === 'available'
         ? 'Go offline'
+        : status === 'assigned'
+          ? 'Assigned'
         : status === 'reserved'
           ? 'Reserved (matched)'
           : status === 'on_trip'
@@ -436,12 +438,13 @@ export default function DriverPage() {
       const payload = await tryReadEdgeErrorPayload(e);
       const code = payload?.code ?? '';
       if (code === 'PIN_LOCKED') {
-        const until = payload?.locked_until ? new Date(payload.locked_until).toLocaleTimeString() : '';
+        const lockedUntil = typeof payload?.locked_until === 'string' ? payload.locked_until : null;
+        const until = lockedUntil ? new Date(lockedUntil).toLocaleTimeString() : '';
         setPinToast(`${t('safety.pickupPin.locked')} ${until ? `(${until})` : ''}`);
       } else if (code === 'INVALID_PIN') {
-        const remaining = payload?.remaining_attempts;
+        const remaining = typeof payload?.remaining_attempts === 'number' ? payload.remaining_attempts : null;
         setPinToast(
-          remaining !== undefined
+          typeof remaining === 'number'
             ? `${t('safety.pickupPin.invalid')} • ${t('safety.pickupPin.remaining', { count: remaining })}`
             : t('safety.pickupPin.invalid'),
         );
@@ -622,10 +625,12 @@ export default function DriverPage() {
                       setBusy(true);
                       setToast(null);
                       try {
+                        const driverId = driver.data?.id;
+                        if (!driverId) return;
                         const { error } = await supabase
                           .from('drivers')
                           .update({ require_pickup_pin: e.target.checked })
-                          .eq('id', driver.data.id);
+                          .eq('id', driverId);
                         if (error) throw error;
                         qc.invalidateQueries({ queryKey: ['driver'] });
                         setToast(t('common.saved'));
@@ -651,17 +656,19 @@ export default function DriverPage() {
               <button
                 className={status === 'offline' ? 'btn btn-primary' : 'btn'}
                 disabled={busy || !canToggleOnline}
-                title={!canToggleOnline ? 'You cannot change availability while reserved / on trip.' : undefined}
+                title={!canToggleOnline ? 'You cannot change availability while assigned / reserved / on trip.' : undefined}
                 onClick={async () => {
                   setBusy(true);
                   setToast(null);
                   try {
+                    const driverId = driver.data?.id;
+                    if (!driverId) return;
                     const next = status === 'offline' ? 'available' : 'offline';
                     if (next === 'available' && !kycVerified) {
                       setToast('KYC verification required before going online.');
                       return;
                     }
-                    const { error } = await supabase.from('drivers').update({ status: next }).eq('id', driver.data.id);
+                    const { error } = await supabase.from('drivers').update({ status: next }).eq('id', driverId);
                     if (error) throw error;
                     setToast(next === 'available' ? 'You are online.' : 'You are offline.');
                     qc.invalidateQueries({ queryKey: ['driver'] });

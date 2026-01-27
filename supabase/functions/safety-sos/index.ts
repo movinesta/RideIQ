@@ -229,4 +229,4 @@ Deno.serve((req) => withRequestContext('safety-sos', req, async (ctx) => {
     const msg = e instanceof Error ? e.message : String(e);
     return errorJson(msg, 500, 'INTERNAL');
   }
-})));
+}));

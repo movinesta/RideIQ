@@ -12,7 +12,7 @@ export type Json =
 export type Database = {
   public: {
     Enums: {
-      driver_status: 'offline' | 'available' | 'on_trip' | 'suspended';
+      driver_status: 'offline' | 'available' | 'assigned' | 'on_trip' | 'suspended' | 'reserved';
       incident_severity: 'low' | 'medium' | 'high' | 'critical';
       incident_status: 'open' | 'triaging' | 'resolved' | 'closed';
       kyc_status: 'unverified' | 'pending' | 'verified' | 'rejected';
@@ -25,7 +25,7 @@ export type Database = {
       topup_status: 'created' | 'pending' | 'succeeded' | 'failed';
       wallet_entry_kind: 'topup' | 'ride_fare' | 'adjustment';
       wallet_hold_kind: 'ride' | 'withdraw';
-      wallet_hold_status: 'active' | 'captured' | 'released';
+      wallet_hold_status: 'active' | 'captured' | 'held' | 'released';
       withdraw_payout_kind: 'qicard' | 'asiapay' | 'zaincash';
       withdraw_request_status: 'requested' | 'approved' | 'rejected' | 'paid' | 'cancelled';
     };

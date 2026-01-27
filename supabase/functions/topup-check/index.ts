@@ -2,12 +2,10 @@ import { handleOptions } from '../_shared/cors.ts';
 import { createServiceClient, requireUser } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
-import { signJwtHS256 } from '../_shared/crypto.ts';
+import { getZaincashV2Config, zaincashV2Inquiry } from '../_shared/zaincashV2.ts';
+import { findProvider, getPaymentsPublicConfig } from '../_shared/paymentsConfig.ts';
+import { QICARD_DEFAULT_STATUS_PATH } from '../_shared/constants.ts';
 
-const ZAINCASH_BASE_URL = (Deno.env.get('ZAINCASH_BASE_URL') ?? 'https://test.zaincash.iq').replace(/\/$/, '');
-const ZAINCASH_MERCHANT_ID = Deno.env.get('ZAINCASH_MERCHANT_ID') ?? '';
-const ZAINCASH_SECRET = Deno.env.get('ZAINCASH_SECRET') ?? '';
-const ZAINCASH_MSISDN = Deno.env.get('ZAINCASH_MSISDN') ?? '';
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -24,66 +22,39 @@ function basicAuthHeader(user: string, pass: string) {
 function mapStatus(s: string) {
   const v = (s ?? '').toLowerCase();
   const succeeded = ['success', 'succeeded', 'paid', 'completed', 'captured', 'done', 'approved'].includes(v);
-  const failed = ['failed', 'canceled', 'cancelled', 'declined', 'rejected', 'error', 'expired'].includes(v);
+  const failed = ['failed', 'canceled', 'cancelled', 'declined', 'rejected', 'error', 'expired', 'refunded'].includes(v);
   if (succeeded) return 'succeeded' as const;
   if (failed) return 'failed' as const;
   return 'pending' as const;
 }
 
+
 async function checkZainCash(txId: string) {
-  if (!ZAINCASH_MERCHANT_ID || !ZAINCASH_SECRET || !ZAINCASH_MSISDN) {
-    throw new Error('ZainCash not configured');
-  }
+  const cfg = getZaincashV2Config();
+  const { status, raw } = await zaincashV2Inquiry(cfg, txId);
 
-  const jwt = await signJwtHS256(
-    { id: txId, msisdn: Number(ZAINCASH_MSISDN) },
-    ZAINCASH_SECRET,
-    60 * 10,
-  );
-
-  const form = new URLSearchParams();
-  form.set('token', jwt);
-  form.set('merchantId', ZAINCASH_MERCHANT_ID);
-
-  const res = await fetch(`${ZAINCASH_BASE_URL}/transaction/get`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: form,
-  });
-
-  const text = await res.text();
-  let out: any = null;
-  try { out = JSON.parse(text); } catch { out = null; }
-  const statusRaw = String(out?.status ?? out?.result ?? out?.response ?? '').toLowerCase();
+  // return statusRaw in lower-case so our mapper can work
   return {
-  ok: res.ok,
-  statusRaw,
-  payload: {
-    url,
-    http_status: res.status,
-    body: out ?? { raw: text },
-  },
-};
+    ok: true,
+    statusRaw: String(status ?? '').toLowerCase(),
+    payload: {
+      transactionId: txId,
+      inquiry: raw,
+    },
+  };
 }
 
-async function checkQiCard(providerCfg: Record<string, unknown>, providerTxId: string, intentId: string) {
-  const baseUrl = String(providerCfg.base_url ?? envTrim('QICARD_BASE_URL') ?? '').replace(/\/$/, '');
 
-  // Normalize status path:
-  // - Some configs historically used `/payment/{id}` but docs list action endpoints like `/payment/{paymentId}/cancel`,
-  //   and many gateways expose a dedicated status route.
-  // We'll try multiple candidates to be resilient across sandbox/prod.
-  let statusPath = String(providerCfg.status_path ?? (envTrim('QICARD_STATUS_PATH') || '/payment/{id}/status')).trim();
+async function checkQiCard(providerTxId: string, intentId: string) {
+  const baseUrl = String(envTrim('QICARD_BASE_URL') ?? '').replace(/\/$/, '');
+  const statusPathEnv = envTrim('QICARD_STATUS_PATH');
+  // Default: try `/payment/{id}/status` first.
+  let statusPath = String(statusPathEnv || QICARD_DEFAULT_STATUS_PATH).trim();
 
-  // If a legacy config is set to `/payment/{id}` (or similar), prefer `/status`.
-  const legacyPlain = ['/payment/{id}', '/payment/{paymentId}', '/payment/{payment_id}'];
-  if (legacyPlain.includes(statusPath)) statusPath = '/payment/{id}/status';
-
-  const apiKey = String(providerCfg.api_key ?? '');
-  const bearerToken = String(providerCfg.bearer_token ?? apiKey ?? envTrim('QICARD_BEARER_TOKEN'));
-  const basicUser = String(providerCfg.basic_auth_user ?? envTrim('QICARD_BASIC_AUTH_USER')).trim();
-  const basicPass = String(providerCfg.basic_auth_pass ?? envTrim('QICARD_BASIC_AUTH_PASS')).trim();
-  const terminalId = String(providerCfg.terminal_id ?? envTrim('QICARD_TERMINAL_ID')).trim();
+  const bearerToken = String(envTrim('QICARD_BEARER_TOKEN')).trim();
+  const basicUser = String(envTrim('QICARD_BASIC_AUTH_USER')).trim();
+  const basicPass = String(envTrim('QICARD_BASIC_AUTH_PASS')).trim();
+  const terminalId = String(envTrim('QICARD_TERMINAL_ID')).trim();
 
   if (!baseUrl) {
     return { ok: false, statusRaw: 'pending', payload: { error: 'qicard_missing_base_url', intentId } };
@@ -111,7 +82,6 @@ async function checkQiCard(providerCfg: Record<string, unknown>, providerTxId: s
       ''
     ).toLowerCase();
 
-    // Try to surface provider error code if present (for diagnostics)
     const providerErrorCode = out?.error?.code ?? out?.errorCode ?? out?.code ?? null;
 
     return {
@@ -126,47 +96,53 @@ async function checkQiCard(providerCfg: Record<string, unknown>, providerTxId: s
     };
   }
 
-  // Candidate URLs (dedupe while keeping order)
   const candidates: string[] = [];
   const add = (u: string) => { if (!candidates.includes(u)) candidates.push(u); };
 
-  // 1) Config-driven (normalized) path
-  add(`${baseUrl}${statusPath}`.replace('{id}', encodeURIComponent(providerTxId)).replace('{intent_id}', encodeURIComponent(intentId)));
-
-  // 2) Common alternative: `/payment/{id}/status`
+  add(`${baseUrl}${statusPath}`.replace('{id}', encodeURIComponent(providerTxId)));
   add(`${baseUrl}/payment/{id}/status`.replace('{id}', encodeURIComponent(providerTxId)));
-
-  // 3) Some gateways expose status on the payment object itself
   add(`${baseUrl}/payment/{id}`.replace('{id}', encodeURIComponent(providerTxId)));
 
-  // Try each candidate until we get a meaningful status or a 2xx
   let last: any = null;
   for (const url of candidates) {
     const r = await fetchStatus(url);
     last = r;
-
-    // If we got a mapped status, return immediately
     if (r.statusRaw) return r;
-
-    // If provider returned non-5xx, don't keep hammering more endpoints unless empty status
     if (r.ok) return r;
   }
 
   return last ?? { ok: false, statusRaw: 'pending', payload: { error: 'qicard_status_unreachable' } };
 }
 async function checkAsiaPayFromEvents(service: any, intentId: string) {
-  const { data } = await service
-    .from('provider_events')
-    .select('payload,received_at')
-    .eq('provider_code', 'asiapay')
-    .eq('provider_event_id', intentId)
-    .order('received_at', { ascending: false })
-    .limit(1);
+  // Prefer the server-to-server datafeed events.
+  const patterns = [`datafeed:${intentId}:`, `return:${intentId}:`];
 
-  const payload = (data?.[0] as any)?.payload ?? null;
-  const statusRaw = String(payload?.status ?? payload?.result ?? '').toLowerCase();
-  const providerTxId = String(payload?.tx_id ?? payload?.transaction_id ?? payload?.transactionId ?? '');
-  return { ok: true, statusRaw, payload, providerTxId: providerTxId || null };
+  for (const prefix of patterns) {
+    const { data } = await service
+      .from('provider_events')
+      .select('provider_event_id,payload,received_at')
+      .eq('provider_code', 'asiapay')
+      .like('provider_event_id', `${prefix}%`)
+      .order('received_at', { ascending: false })
+      .limit(1);
+
+    const payload = (data?.[0] as any)?.payload ?? null;
+    if (!payload) continue;
+
+    const successCode = String(payload?.SuccessCode ?? payload?.successCode ?? payload?.success_code ?? '').trim();
+    const statusRaw =
+      successCode === '0' || successCode.toLowerCase() === 'success'
+        ? 'success'
+        : successCode
+          ? 'failed'
+          : String(payload?.status ?? payload?.result ?? '').toLowerCase() || 'pending';
+
+    const providerTxId = String(payload?.PayRef ?? payload?.payRef ?? payload?.pay_ref ?? payload?.Prc ?? payload?.prc ?? '');
+
+    return { ok: true, statusRaw, payload, providerTxId: providerTxId || null };
+  }
+
+  return { ok: true, statusRaw: 'pending', payload: null, providerTxId: null };
 }
 
 Deno.serve(async (req) => {
@@ -285,24 +261,21 @@ if (!intent) {
   const providerCode = String(intent.provider_code ?? '').toLowerCase();
   const providerTxId = String(intent.provider_tx_id ?? '') || null;
 
-    const { data: provider, error: provErr } = await service
-      .from('payment_providers')
-      .select('code,kind,enabled,config')
-      .eq('code', providerCode)
-      .maybeSingle();
-    if (provErr || !provider || !(provider as any).enabled) {
-      return errorJson('Payment provider missing or disabled', 400, 'PROVIDER_DISABLED');
-    }
+const paymentsCfg = getPaymentsPublicConfig();
+const provider = findProvider(paymentsCfg, providerCode);
+if (!provider || !provider.enabled) {
+  return errorJson('Payment provider missing or disabled', 400, 'PROVIDER_DISABLED');
+}
 
-    const kind = String((provider as any).kind ?? '').toLowerCase();
-    const providerCfg = ((provider as any).config ?? {}) as Record<string, unknown>;
+const kind = provider.kind;
+
 
     let check: { ok: boolean; statusRaw: string; payload: unknown } = { ok: false, statusRaw: 'pending', payload: null };
     let providerTxIdForFinalize = providerTxId;
 
     if (kind === 'qicard') {
       if (!providerTxIdForFinalize) return errorJson('Missing provider_tx_id', 400, 'MISSING_PROVIDER_TX');
-      check = await checkQiCard(providerCfg, providerTxIdForFinalize, intentId);
+      check = await checkQiCard(providerTxIdForFinalize, intentId);
     } else if (kind === 'zaincash') {
       if (!providerTxIdForFinalize) return errorJson('Missing provider_tx_id', 400, 'MISSING_PROVIDER_TX');
       check = await checkZainCash(providerTxIdForFinalize);

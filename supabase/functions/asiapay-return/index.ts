@@ -2,6 +2,7 @@ import { handleOptions } from '../_shared/cors.ts';
 import { createServiceClient } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { shaHex, timingSafeEqual } from '../_shared/crypto.ts';
+import { findProvider, getPaymentsPublicConfig } from '../_shared/paymentsConfig.ts';
 
 const APP_BASE_URL = (Deno.env.get('APP_BASE_URL') ?? '').replace(/\/$/, '').replace(/\/wallet$/, '');
 
@@ -83,22 +84,24 @@ Deno.serve(async (req) => {
       // ignore duplicates
     }
 
-    // Load provider config for secure hash verification.
-    const { data: provider, error: provErr } = await service
-      .from('payment_providers')
-      .select('enabled,config')
-      .eq('code', 'asiapay')
-      .maybeSingle();
-    if (provErr || !provider) return errorJson('Provider not found', 404, 'NOT_FOUND');
+// Load provider status from Edge secrets config.
+const paymentsCfg = getPaymentsPublicConfig();
+const provider = findProvider(paymentsCfg, 'asiapay');
+if (!provider) return errorJson('Provider not found', 404, 'NOT_FOUND');
 
-    if (!(provider as any).enabled) {
-      const r = redirectToWallet(ref && isUuid(ref) ? ref : null, 'pending', null);
-      if (r) return r;
-      return json({ ok: true, ignored: true, reason: 'provider_disabled' });
-    }
+if (!provider.enabled) {
+  const r = redirectToWallet(ref && isUuid(ref) ? ref : null, 'pending', null);
+  if (r) return r;
+  return json({ ok: true, ignored: true, reason: 'provider_disabled' });
+}
+if (provider.kind !== 'asiapay') {
+  const r = redirectToWallet(ref && isUuid(ref) ? ref : null, 'pending', null);
+  if (r) return r;
+  return json({ ok: true, ignored: true, reason: 'provider_kind_mismatch' });
+}
 
-    const cfg = ((provider as any).config ?? {}) as Record<string, unknown>;
-    const secret = String(cfg.secure_hash_secret ?? cfg.secureHashSecret ?? Deno.env.get('ASIAPAY_SECURE_HASH_SECRET') ?? '');
+const secret = String(Deno.env.get('ASIAPAY_SECURE_HASH_SECRET') ?? '');
+
 
     let verified: boolean | null = null;
     if (secret) {

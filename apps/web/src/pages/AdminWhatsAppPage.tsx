@@ -56,7 +56,17 @@ type Msg = {
   failed_at?: string | null;
 };
 
+type BookingLinkPayload = {
+  thread_id: string;
+  action: 'send_booking_link';
+  expires_minutes: number;
+  template?: { name: string; language: string };
+};
 
+type WhatsAppSendResponse = {
+  link?: string;
+  csw_open?: boolean;
+};
 
 type Note = {
   id: string;
@@ -250,8 +260,8 @@ export default function AdminWhatsAppPage() {
     if (!selectedThread) return;
     setBusyMenu(true);
     try {
-      const out = await invokeEdge('whatsapp-send', { thread_id: selectedThread.id, action: 'send_menu' });
-      if (out?.code === 'TEMPLATE_REQUIRED') {
+      const { data } = await invokeEdge<{ code?: string }>('whatsapp-send', { thread_id: selectedThread.id, action: 'send_menu' });
+      if (data?.code === 'TEMPLATE_REQUIRED') {
         setToast('CSW closed — menu requires CSW open. Use template to re-engage.');
       } else {
         setToast('Menu sent.');
@@ -313,7 +323,7 @@ export default function AdminWhatsAppPage() {
     setToast(null);
     setLink(null);
     try {
-      const payload: any = {
+      const payload: BookingLinkPayload = {
         thread_id: selected,
         action: 'send_booking_link',
         expires_minutes: 30,
@@ -321,15 +331,15 @@ export default function AdminWhatsAppPage() {
       const bn = bookingTemplateName.trim();
       if (bn) payload.template = { name: bn, language: bookingTemplateLang.trim() || 'en_US' };
 
-      const { data: res } = await invokeEdge<any>('whatsapp-send', payload);
-      const l = (res as any)?.link;
+      const { data: res } = await invokeEdge<WhatsAppSendResponse>('whatsapp-send', payload);
+      const l = res?.link;
       if (typeof l === 'string' && l) {
         setLink(l);
         await navigator.clipboard?.writeText(l).catch(() => {});
       }
       await msgsQ.refetch();
       await threadsQ.refetch();
-      setToast((res as any)?.csw_open ? 'Link sent (CSW)' : 'Link sent (template)');
+      setToast(res?.csw_open ? 'Link sent (CSW)' : 'Link sent (template)');
     } catch (e) {
       setToast(errorText(e));
     } finally {
@@ -614,8 +624,8 @@ export default function AdminWhatsAppPage() {
           </div>
 
           {selectedThread && (
-
-            <div className="p-4 border-t border-gray-100 bg-gray-50">
+            <>
+              <div className="p-4 border-t border-gray-100 bg-gray-50">
               <div className="text-sm font-semibold">Internal notes</div>
               <div className="mt-2 rounded-xl border border-gray-200 bg-white p-3 max-h-40 overflow-auto">
                 {notesQ.isLoading ? (
@@ -654,7 +664,7 @@ export default function AdminWhatsAppPage() {
               </div>
             </div>
 
-            <div className="p-4 border-t border-gray-100">
+              <div className="p-4 border-t border-gray-100">
               <div className="flex items-center justify-between gap-2">
                 <label className="flex items-center gap-2 text-xs text-gray-700">
                   <input type="checkbox" checked={templateMode} onChange={(e) => setTemplateMode(e.target.checked)} />
@@ -718,7 +728,8 @@ export default function AdminWhatsAppPage() {
                   {busySend ? 'Sending…' : templateMode ? 'Send template' : 'Send'}
                 </button>
               </div>
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>

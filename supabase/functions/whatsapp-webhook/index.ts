@@ -1,4 +1,8 @@
-im
+import { handleOptions } from '../_shared/cors.ts';
+import { hmacSha256Bytes, safeJsonParse, timingSafeEqual } from '../_shared/crypto.ts';
+import { errorJson, json } from '../_shared/json.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
+import { createServiceClient } from '../_shared/supabase.ts';
 
 type StatusUpdate = {
   id: string;           // message id being updated (business outbound id)
@@ -38,11 +42,6 @@ function unixSecondsToIso(ts?: string): string | null {
   if (!Number.isFinite(n)) return null;
   return new Date(n * 1000).toISOString();
 }
-port { handleOptions } from '../_shared/cors.ts';
-import { errorJson, json } from '../_shared/json.ts';
-import { withRequestContext } from '../_shared/requestContext.ts';
-import { createServiceClient } from '../_shared/supabase.ts';
-import { hmacSha256Bytes, safeJsonParse, timingSafeEqual } from '../_shared/crypto.ts';
 
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');

@@ -125,11 +125,81 @@ Notes:
 
 Payment provider config (top-ups):
 
-- `ZAINCASH_BASE_URL` (defaults to `https://test.zaincash.iq`)
-- `ZAINCASH_MERCHANT_ID`
-- `ZAINCASH_SECRET`
-- `ZAINCASH_MSISDN` (e.g. `9647XXXXXXXXX`)
-- `ZAINCASH_LANG` (`en` or `ar`)
+ZainCash v2 (Edge Function secrets; no client-side keys):
+
+- `ZAINCASH_V2_BASE_URL` (e.g. UAT/Prod API base from ZainCash)
+- `ZAINCASH_V2_CLIENT_ID`
+- `ZAINCASH_V2_CLIENT_SECRET`
+- `ZAINCASH_V2_API_KEY` (used to verify redirect/webhook JWTs)
+- `ZAINCASH_V2_SCOPE` (default: `payment:read payment:write`)
+- `ZAINCASH_V2_LANGUAGE` (default: `En`; allowed: `En`, `Ar`, `Ku`)
+- `ZAINCASH_V2_SERVICE_TYPE` (serviceType provided by ZainCash)
+
+
+
+Providers + presets are configured via a single Edge Function secret (no database seeding):
+
+- `PAYMENTS_PUBLIC_CONFIG_JSON` — JSON string with enabled providers and their presets.
+  - Example:
+    ```json
+    {
+      "providers": [
+        {
+          "code": "zaincash",
+          "name": "ZainCash",
+          "kind": "zaincash",
+          "enabled": true,
+          "presets": [
+            { "id": "z10", "label": "10,000 IQD", "amount_iqd": 10000, "bonus_iqd": 0, "active": true }
+          ]
+        },
+        {
+          "code": "asiapay",
+          "name": "AsiaPay",
+          "kind": "asiapay",
+          "enabled": true,
+          "presets": [
+            { "id": "a10", "label": "10,000 IQD", "amount_iqd": 10000, "bonus_iqd": 0, "active": true }
+          ]
+        },
+        {
+          "code": "qicard",
+          "name": "QiCard",
+          "kind": "qicard",
+          "enabled": true,
+          "presets": [
+            { "id": "q10", "label": "10,000 IQD", "amount_iqd": 10000, "bonus_iqd": 0, "active": true }
+          ]
+        }
+      ]
+    }
+    ```
+
+AsiaPay (PayDollar) (server-side only):
+
+- `ASIAPAY_MERCHANT_ID`
+- `ASIAPAY_SECURE_HASH_SECRET`
+- `ASIAPAY_SECURE_HASH_FUNCTION` (`sha1` default, or `sha256`)
+- `ASIAPAY_CURRENCY_CODE` (default: `IQD`)
+- `ASIAPAY_LANG` (default: `E` / English; depends on AsiaPay setup)
+- `ASIAPAY_PAYMENT_URL` (gateway URL)
+- Webhooks:
+  - `asiapay-notify` (server-to-server datafeed)
+  - `asiapay-return` (browser return)
+
+QiCard (server-side only):
+
+- `QICARD_BASE_URL` (e.g. `https://sandbox.qicard.iq/api/v1`)
+- `QICARD_CREATE_PATH` (default: `/payment`)
+- `QICARD_STATUS_PATH` (default: `/payment/{id}/status`)
+- Auth (pick one):
+  - `QICARD_BEARER_TOKEN` **or**
+  - `QICARD_BASIC_AUTH_USER` + `QICARD_BASIC_AUTH_PASS`
+- Optional:
+  - `QICARD_TERMINAL_ID`
+  - `QICARD_CURRENCY` (default: `IQD`)
+  - `QICARD_WEBHOOK_SECRET` (for `qicard-notify` signature verification)
+  - `ALLOW_INSECURE_WEBHOOKS` (dev only; `true` to bypass signature)
 
 ### 4) Run
 

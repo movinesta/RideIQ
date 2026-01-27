@@ -2,12 +2,12 @@
 -- PostgreSQL database dump
 --
 
-\restrict R16DfEQtJxc8WjdM9EXtQWVjcvdKb5caSZG2T15ZXFzFapibQwNPoBQkFLyaRW4
+\restrict wg8mkBsXNy7PY1j3IPizEoeYdleFhFGzk69p23xY9vuRugGPd53q6hbJs79iv6U
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.7
 
--- Started on 2026-01-24 18:42:11
+-- Started on 2026-01-27 08:30:13
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -22,7 +22,7 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- TOC entry 5020 (class 0 OID 17264)
+-- TOC entry 5109 (class 0 OID 17264)
 -- Dependencies: 383
 -- Data for Name: buckets; Type: TABLE DATA; Schema: storage; Owner: supabase_storage_admin
 --
@@ -31,14 +31,15 @@ COPY storage.buckets (id, name, owner, created_at, updated_at, public, avif_auto
 avatars	avatars	\N	2026-01-24 12:33:05.071219+00	2026-01-24 12:33:05.071219+00	t	f	\N	\N	\N	STANDARD
 kyc-documents	kyc-documents	\N	2026-01-24 12:33:05.071219+00	2026-01-24 12:33:05.071219+00	f	f	\N	\N	\N	STANDARD
 chat-media	chat-media	\N	2026-01-24 12:33:05.071219+00	2026-01-24 12:33:05.071219+00	f	f	\N	\N	\N	STANDARD
+driver-docs	driver-docs	\N	2026-01-26 00:32:47.231078+00	2026-01-26 00:32:47.231078+00	f	f	\N	\N	\N	STANDARD
 \.
 
 
--- Completed on 2026-01-24 18:42:43
+-- Completed on 2026-01-27 08:30:45
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict R16DfEQtJxc8WjdM9EXtQWVjcvdKb5caSZG2T15ZXFzFapibQwNPoBQkFLyaRW4
+\unrestrict wg8mkBsXNy7PY1j3IPizEoeYdleFhFGzk69p23xY9vuRugGPd53q6hbJs79iv6U
 

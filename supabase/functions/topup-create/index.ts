@@ -4,20 +4,18 @@ import { errorJson, json } from '../_shared/json.ts';
 import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
 import { logAppEvent } from '../_shared/log.ts';
 import { SUPABASE_URL } from '../_shared/config.ts';
-import { shaHex, signJwtHS256 } from '../_shared/crypto.ts';
+import { shaHex } from '../_shared/crypto.ts';
+import { CURRENCY_IQD, ISO4217_NUMERIC_IQD, QICARD_DEFAULT_CREATE_PATH } from '../_shared/constants.ts';
+import { getZaincashV2Config, zaincashV2InitPayment } from '../_shared/zaincashV2.ts';
+import { findPreset, findProvider, getPaymentsPublicConfig } from '../_shared/paymentsConfig.ts';
 
 type Body = {
   provider_code?: string;
-  package_id?: string;
+  preset_id?: string;
   idempotency_key?: string;
 };
 
 const APP_SERVICE_TYPE = Deno.env.get('TOPUP_SERVICE_TYPE') ?? 'Ride top-up';
-const ZAINCASH_BASE_URL = (Deno.env.get('ZAINCASH_BASE_URL') ?? 'https://test.zaincash.iq').replace(/\/$/, '');
-const ZAINCASH_MERCHANT_ID = Deno.env.get('ZAINCASH_MERCHANT_ID') ?? '';
-const ZAINCASH_SECRET = Deno.env.get('ZAINCASH_SECRET') ?? '';
-const ZAINCASH_MSISDN = Deno.env.get('ZAINCASH_MSISDN') ?? '';
-const ZAINCASH_LANG = Deno.env.get('ZAINCASH_LANG') ?? 'en';
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -57,33 +55,33 @@ Deno.serve(async (req) => {
 
     const body: Body = await req.json().catch(() => ({}));
     const providerCode = (body.provider_code ?? '').trim().toLowerCase();
-    const packageId = (body.package_id ?? '').trim();
+    const presetId = (body.preset_id ?? '').trim();
     const idempotencyKey = (body.idempotency_key ?? '').trim() || null;
 
     if (!providerCode) return errorJson('provider_code is required', 400, 'VALIDATION_ERROR');
-    if (!packageId || !isUuid(packageId)) return errorJson('package_id is required', 400, 'VALIDATION_ERROR');
+    if (!presetId) return errorJson('preset_id is required', 400, 'VALIDATION_ERROR');
 
     const service = createServiceClient();
 
-    const { data: provider, error: provErr } = await service
-      .from('payment_providers')
-      .select('code,kind,enabled,config,name')
-      .eq('code', providerCode)
-      .maybeSingle();
-    if (provErr || !provider) return errorJson('Payment provider not found', 404, 'NOT_FOUND');
+    // Payment provider + presets are configured via Edge Function secrets (not DB seed rows)
+    let paymentsCfg;
+    try {
+      paymentsCfg = getPaymentsPublicConfig();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return errorJson(`Payments config is not configured: ${msg}`, 500, 'MISCONFIGURED');
+    }
+
+    const provider = findProvider(paymentsCfg, providerCode);
+    if (!provider) return errorJson('Payment provider not found', 404, 'NOT_FOUND');
     if (!provider.enabled) return errorJson('Payment provider is disabled', 409, 'PROVIDER_DISABLED');
 
-    const { data: pkg, error: pkgErr } = await service
-      .from('topup_packages')
-      .select('id,label,amount_iqd,bonus_iqd,active')
-      .eq('id', packageId)
-      .eq('active', true)
-      .maybeSingle();
-    if (pkgErr || !pkg) return errorJson('Top-up package not found', 404, 'NOT_FOUND');
+    const preset = findPreset(provider, presetId);
+    if (!preset || !preset.active) return errorJson('Top-up preset not found', 404, 'NOT_FOUND');
 
-    const amountIqd = Number(pkg.amount_iqd ?? 0);
-    const bonusIqd = Number(pkg.bonus_iqd ?? 0);
-    if (!Number.isFinite(amountIqd) || amountIqd <= 0) return errorJson('Invalid package amount', 400, 'VALIDATION_ERROR');
+    const amountIqd = Number(preset.amount_iqd ?? 0);
+    const bonusIqd = Number(preset.bonus_iqd ?? 0);
+    if (!Number.isFinite(amountIqd) || amountIqd <= 0) return errorJson('Invalid preset amount', 400, 'VALIDATION_ERROR');
 
     // Insert intent. If the user passes an idempotency_key and it already exists, return existing intent.
     let intentId: string | null = null;
@@ -93,11 +91,13 @@ Deno.serve(async (req) => {
         .insert({
           user_id: user.id,
           provider_code: provider.code,
-          package_id: pkg.id,
+          // We don't rely on seeded DB rows for payment configuration.
+          package_id: null,
           amount_iqd: amountIqd,
           bonus_iqd: bonusIqd,
           status: 'created',
           idempotency_key: idempotencyKey,
+          provider_payload: { preset_id: presetId },
         })
         .select('id')
         .single();
@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
             event_type: 'topup_intent_create_error',
             actor_id: user.id,
             actor_type: 'rider',
-            payload: { message: msg, provider: provider.code, package_id: packageId },
+            payload: { message: msg, provider: provider.code, preset_id: presetId },
           });
           return errorJson('Failed to create top-up intent', 500, 'INTENT_CREATE_FAILED');
         }
@@ -132,85 +132,77 @@ Deno.serve(async (req) => {
     if (!intentId) return errorJson('Failed to create top-up intent', 500, 'INTENT_CREATE_FAILED');
 
     const providerKind = String((provider as any).kind ?? '').toLowerCase();
-    const providerCfg = ((provider as any).config ?? {}) as Record<string, unknown>;
 
     // Provider-specific init.
     if (providerKind === 'zaincash') {
-      if (!ZAINCASH_MERCHANT_ID || !ZAINCASH_SECRET || !ZAINCASH_MSISDN) {
-        return errorJson('ZainCash is not configured. Set ZAINCASH_MERCHANT_ID, ZAINCASH_SECRET, ZAINCASH_MSISDN.', 500, 'MISCONFIGURED');
-      }
-
       // ZainCash amount is IQD integer, min 250.
       if (amountIqd < 250) return errorJson('Minimum top-up is 250 IQD.', 400, 'VALIDATION_ERROR');
 
-      const redirectUrl = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/zaincash-return`;
-
-      const jwt = await signJwtHS256(
-        {
-          amount: Math.trunc(amountIqd),
-          serviceType: APP_SERVICE_TYPE,
-          msisdn: Number(ZAINCASH_MSISDN),
-          orderId: intentId,
-          redirectUrl,
-        },
-        ZAINCASH_SECRET,
-        60 * 60,
-      );
-
-      const form = new URLSearchParams();
-      form.set('token', jwt);
-      form.set('merchantId', ZAINCASH_MERCHANT_ID);
-      if (ZAINCASH_LANG) form.set('lang', ZAINCASH_LANG);
-
-      const initRes = await fetch(`${ZAINCASH_BASE_URL}/transaction/init`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: form,
-      });
-
-      const initText = await initRes.text();
-      let initJson: any = null;
+      let cfg;
       try {
-        initJson = JSON.parse(initText);
-      } catch {
-        initJson = null;
+        cfg = getZaincashV2Config();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return errorJson(`ZainCash v2 is not configured: ${msg}`, 500, 'MISCONFIGURED');
       }
 
-      const txId = initJson?.id as string | undefined;
-      if (!initRes.ok || !txId) {
-        await service
-          .from('topup_intents')
-          .update({ status: 'failed', failure_reason: `zaincash_init_failed:${initRes.status}`, provider_payload: { init: initJson ?? initText } })
-          .eq('id', intentId);
-        return errorJson('Failed to initialize ZainCash payment.', 502, 'PROVIDER_ERROR');
-      }
+      const base = SUPABASE_URL.replace(/\/$/, '');
+      const successUrl = new URL(`${base}/functions/v1/zaincash-return`);
+      successUrl.searchParams.set('intentId', intentId);
+      successUrl.searchParams.set('result', 'success');
+
+      const failureUrl = new URL(`${base}/functions/v1/zaincash-return`);
+      failureUrl.searchParams.set('intentId', intentId);
+      failureUrl.searchParams.set('result', 'failure');
+
+      const { transactionId, redirectUrl, raw } = await zaincashV2InitPayment(cfg, {
+        // Use intentId as a UUID externalReferenceId (idempotency key)
+        externalReferenceId: intentId,
+        orderId: intentId,
+        amountIQD: Math.trunc(amountIqd),
+        // Optional: you can pass user phone if you have it; we keep it unset here.
+        customerPhone: null,
+        successUrl: successUrl.toString(),
+        failureUrl: failureUrl.toString(),
+      });
 
       await service
         .from('topup_intents')
-        .update({ status: 'pending', provider_tx_id: txId, provider_payload: { init: initJson, order_id: intentId } })
+        .update({
+          status: 'pending',
+          provider_tx_id: transactionId,
+          provider_payload: { init: raw, external_reference_id: intentId },
+        })
         .eq('id', intentId);
 
       await logAppEvent({
         event_type: 'topup_intent_created',
         actor_id: user.id,
         actor_type: 'rider',
-        payload: { intent_id: intentId, provider: 'zaincash', provider_tx_id: txId, amount: amountIqd },
+        payload: { intent_id: intentId, provider: 'zaincash', provider_tx_id: transactionId, amount: amountIqd },
       });
 
-      const payUrl = `${ZAINCASH_BASE_URL}/transaction/pay?id=${encodeURIComponent(txId)}`;
-      return json({ ok: true, intent_id: intentId, redirect_url: payUrl, rate_limit: { remaining: rl.remaining, reset_at: rl.resetAt } });
+      return json({
+        ok: true,
+        intent_id: intentId,
+        provider_tx_id: transactionId,
+        redirect_url: redirectUrl,
+        rate_limit: { remaining: rl.remaining, reset_at: rl.resetAt },
+      });
     }
 
 
 
+
     if (providerKind === 'asiapay') {
-      const paymentUrl = String(providerCfg.payment_url ?? providerCfg.paymentUrl ?? envTrim('ASIAPAY_PAYMENT_URL')).trim();
-      const merchantId = String(providerCfg.merchant_id ?? providerCfg.merchantId ?? envTrim('ASIAPAY_MERCHANT_ID')).trim();
-      const secret = String(providerCfg.secure_hash_secret ?? providerCfg.secureHashSecret ?? envTrim('ASIAPAY_SECURE_HASH_SECRET')).trim();
-      const currCode = String(providerCfg.curr_code ?? providerCfg.currCode ?? (envTrim('ASIAPAY_CURR_CODE') || '368')).trim();
-      const payType = String(providerCfg.pay_type ?? providerCfg.payType ?? envTrim('ASIAPAY_PAY_TYPE') ?? 'N').trim() || 'N';
-      const lang = String(providerCfg.lang ?? envTrim('ASIAPAY_LANG') ?? 'E').trim() || 'E';
-      const hashTypeRaw = String(providerCfg.secure_hash_type ?? providerCfg.secureHashType ?? providerCfg.hash_alg ?? 'sha1').toLowerCase();
+      // Provider settings are stored as Edge Function secrets (env vars), not DB rows.
+      const paymentUrl = envTrim('ASIAPAY_PAYMENT_URL');
+      const merchantId = envTrim('ASIAPAY_MERCHANT_ID');
+      const secret = envTrim('ASIAPAY_SECURE_HASH_SECRET');
+      const currCode = (envTrim('ASIAPAY_CURR_CODE') || ISO4217_NUMERIC_IQD).trim();
+      const payType = (envTrim('ASIAPAY_PAY_TYPE') || 'N').trim() || 'N';
+      const lang = (envTrim('ASIAPAY_LANG') || 'E').trim() || 'E';
+      const hashTypeRaw = (envTrim('ASIAPAY_SECURE_HASH_TYPE') || 'sha1').toLowerCase();
       const secureHashType = hashTypeRaw === 'sha256' ? 'sha256' : 'sha1';
 
       if (!paymentUrl || !merchantId || !secret) {
@@ -286,95 +278,95 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (providerKind === 'qicard') {
-      const baseUrl = String(providerCfg.base_url ?? envTrim('QICARD_BASE_URL') ?? '').replace(/\/$/, '');
-      // QiCard sandbox docs use: https://uat-sandbox-3ds-api.qi.iq/api/v1/payment
-      // So the safe default path is `/payment` when baseUrl already ends with `/api/v1`.
-      const createPath = String(providerCfg.create_path ?? (envTrim('QICARD_CREATE_PATH') || '/payment'));
-      const apiKey = String(providerCfg.api_key ?? '');
-      const bearerToken = String(providerCfg.bearer_token ?? apiKey ?? envTrim('QICARD_BEARER_TOKEN'));
-      const basicUser = String(providerCfg.basic_auth_user ?? envTrim('QICARD_BASIC_AUTH_USER')).trim();
-      const basicPass = String(providerCfg.basic_auth_pass ?? envTrim('QICARD_BASIC_AUTH_PASS')).trim();
-      const terminalId = String(providerCfg.terminal_id ?? envTrim('QICARD_TERMINAL_ID')).trim();
-      const currency = String(providerCfg.currency ?? 'IQD');
+    
+if (providerKind === 'qicard') {
+  const baseUrl = String(envTrim('QICARD_BASE_URL')).replace(/\/$/, '');
+  // QiCard sandbox docs typically expose: .../api/v1/payment
+  // So default `createPath` is `/payment` when baseUrl already ends with `/api/v1`.
+  const createPath = String(envTrim('QICARD_CREATE_PATH') || QICARD_DEFAULT_CREATE_PATH);
+  const bearerToken = String(envTrim('QICARD_BEARER_TOKEN')).trim();
+  const basicUser = String(envTrim('QICARD_BASIC_AUTH_USER')).trim();
+  const basicPass = String(envTrim('QICARD_BASIC_AUTH_PASS')).trim();
+  const terminalId = String(envTrim('QICARD_TERMINAL_ID')).trim();
+  const currency = String(envTrim('QICARD_CURRENCY') || CURRENCY_IQD).trim() || CURRENCY_IQD;
 
-      if (!baseUrl) {
-        await service.from('topup_intents').update({ status: 'failed', failure_reason: 'qicard_missing_base_url' }).eq('id', intentId);
-        return errorJson('QiCard is not configured. Provide base_url in provider config or set QICARD_BASE_URL, and set QICARD_BASIC_AUTH_USER/QICARD_BASIC_AUTH_PASS/QICARD_TERMINAL_ID for sandbox.', 500, 'MISCONFIGURED');
-      }
+  if (!baseUrl) {
+    await service.from('topup_intents').update({ status: 'failed', failure_reason: 'qicard_missing_base_url' }).eq('id', intentId);
+    return errorJson('QiCard is not configured (missing QICARD_BASE_URL).', 500, 'MISCONFIGURED');
+  }
 
-      const notifyUrl = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/qicard-notify`;
-      const defaultReturnUrl = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/qicard-return`;
-      const returnUrl = String(providerCfg.return_url ?? defaultReturnUrl);
+  const notifyUrl = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/qicard-notify`;
+  const defaultReturnUrl = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/qicard-return`;
+  const returnUrl = String(envTrim('QICARD_RETURN_URL') || defaultReturnUrl);
 
-      const payload: Record<string, unknown> = {
-        // Required by QiCard (see provider error: `requestId (must not be empty)`)
-        // Use the topup intent UUID for idempotency + correlation.
-        requestId: intentId,
-        amount: Math.trunc(amountIqd),
-        currency,
-        description: `${APP_SERVICE_TYPE} (${pkg.label})`,
-        reference: intentId,
-        callbackUrl: notifyUrl,
-        returnUrl,
-        metadata: { intent_id: intentId, user_id: user.id, provider: provider.code },
-      };
+  const payload: Record<string, unknown> = {
+    // QiCard requires requestId uniqueness per merchant terminal.
+    // Use the topup intent UUID for idempotency + correlation.
+    requestId: intentId,
+    amount: Math.trunc(amountIqd),
+    currency,
+    description: `${APP_SERVICE_TYPE} (${preset.label})`,
+    reference: intentId,
+    callbackUrl: notifyUrl,
+    returnUrl,
+    metadata: { intent_id: intentId, user_id: user.id, provider: provider.code, preset_id: preset.id },
+  };
 
-      const headers: Record<string, string> = { 'content-type': 'application/json' };
-      if (basicUser && basicPass) headers.Authorization = basicAuthHeader(basicUser, basicPass);
-      else if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
-      if (terminalId) headers['X-Terminal-Id'] = terminalId;
+  const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json' };
+  if (basicUser && basicPass) headers.Authorization = basicAuthHeader(basicUser, basicPass);
+  else if (bearerToken) headers.Authorization = `Bearer ${bearerToken}`;
+  if (terminalId) headers['X-Terminal-Id'] = terminalId;
 
-      const res = await fetch(`${baseUrl}${createPath}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      });
+  const res = await fetch(`${baseUrl}${createPath}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  });
 
-      const text = await res.text();
-      let out: any = null;
-      try {
-        out = JSON.parse(text);
-      } catch {
-        out = null;
-      }
+  const text = await res.text();
+  let out: any = null;
+  try {
+    out = JSON.parse(text);
+  } catch {
+    out = null;
+  }
 
-      const redirectUrl = String(out?.formUrl ?? out?.form_url ?? out?.checkoutUrl ?? out?.url ?? out?.redirect_url ?? '');
-      const providerTxId = String(out?.id ?? out?.paymentId ?? out?.payment_id ?? out?.txId ?? out?.transactionId ?? '');
+  const redirectUrl = String(out?.formUrl ?? out?.form_url ?? out?.checkoutUrl ?? out?.url ?? out?.redirect_url ?? '');
+  const providerTxId = String(out?.paymentId ?? out?.payment_id ?? out?.id ?? out?.txId ?? out?.transactionId ?? '');
 
-      // Log response for debugging/idempotency.
-      try {
-        await service.from('provider_events').insert({
-          provider_code: provider.code,
-          provider_event_id: providerTxId || `init:${intentId}`,
-          payload: { request: payload, response: out ?? text, status: res.status },
-        });
-      } catch {
-        // ignore duplicates
-      }
+  // Log response for debugging/idempotency.
+  try {
+    await service.from('provider_events').insert({
+      provider_code: provider.code,
+      provider_event_id: providerTxId || `init:${intentId}`,
+      payload: { request: payload, response: out ?? text, status: res.status },
+    });
+  } catch {
+    // ignore duplicates
+  }
 
-      if (!res.ok || !redirectUrl) {
-        await service
-          .from('topup_intents')
-          .update({ status: 'failed', failure_reason: `qicard_init_failed:${res.status}`, provider_payload: { init: out ?? text } })
-          .eq('id', intentId);
-        return errorJson('Failed to initialize QiCard payment.', 502, 'PROVIDER_ERROR');
-      }
+  if (!res.ok || !redirectUrl) {
+    await service
+      .from('topup_intents')
+      .update({ status: 'failed', failure_reason: `qicard_init_failed:${res.status}`, provider_payload: { init: out ?? text, request: payload } })
+      .eq('id', intentId);
+    return errorJson('Failed to initialize QiCard payment.', 502, 'PROVIDER_ERROR');
+  }
 
-      await service
-        .from('topup_intents')
-        .update({ status: 'pending', provider_tx_id: providerTxId || null, provider_payload: { init: out ?? {}, request: payload } })
-        .eq('id', intentId);
+  await service
+    .from('topup_intents')
+    .update({ status: 'pending', provider_tx_id: providerTxId || null, provider_payload: { init: out ?? {}, request: payload } })
+    .eq('id', intentId);
 
-      await logAppEvent({
-        event_type: 'topup_intent_created',
-        actor_id: user.id,
-        actor_type: 'rider',
-        payload: { intent_id: intentId, provider: 'qicard', provider_tx_id: providerTxId || null, amount: amountIqd },
-      });
+  await logAppEvent({
+    event_type: 'topup_intent_created',
+    actor_id: user.id,
+    actor_type: 'rider',
+    payload: { intent_id: intentId, provider: 'qicard', provider_tx_id: providerTxId || null, amount: amountIqd, preset_id: preset.id },
+  });
 
-      return json({ ok: true, intent_id: intentId, redirect_url: redirectUrl, rate_limit: { remaining: rl.remaining, reset_at: rl.resetAt } });
-    }
+  return json({ ok: true, intent_id: intentId, redirect_url: redirectUrl, rate_limit: { remaining: rl.remaining, reset_at: rl.resetAt } });
+}
 
     return errorJson('This payment provider is not yet supported in the current app build.', 400, 'NOT_IMPLEMENTED');
   } catch (e) {

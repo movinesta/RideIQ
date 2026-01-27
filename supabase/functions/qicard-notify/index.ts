@@ -2,6 +2,7 @@ import { handleOptions } from '../_shared/cors.ts';
 import { createServiceClient } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { hmacSha256Bytes, timingSafeEqual } from '../_shared/crypto.ts';
+import { findProvider, getPaymentsPublicConfig } from '../_shared/paymentsConfig.ts';
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -57,17 +58,15 @@ Deno.serve(async (req) => {
       return json({ ok: true, ignored: true });
     }
 
-    const { data: provider, error: provErr } = await service
-      .from('payment_providers')
-      .select('code,enabled,config')
-      .eq('code', 'qicard')
-      .maybeSingle();
-    if (provErr || !provider) return json({ ok: true, ignored: true, reason: 'provider_not_found' });
-    if (!provider.enabled) return json({ ok: true, ignored: true, reason: 'provider_disabled' });
+const paymentsCfg = getPaymentsPublicConfig();
+const provider = findProvider(paymentsCfg, 'qicard');
+if (!provider) return json({ ok: true, ignored: true, reason: 'provider_not_found' });
+if (!provider.enabled) return json({ ok: true, ignored: true, reason: 'provider_disabled' });
+if (provider.kind !== 'qicard') return json({ ok: true, ignored: true, reason: 'provider_kind_mismatch' });
 
-    const cfg = (provider as any).config ?? {};
-    const webhookSecret = String(cfg.webhook_secret ?? Deno.env.get('QICARD_WEBHOOK_SECRET') ?? '');
-    const allowInsecure = String(Deno.env.get('ALLOW_INSECURE_WEBHOOKS') ?? '').toLowerCase() === 'true';
+const webhookSecret = String(Deno.env.get('QICARD_WEBHOOK_SECRET') ?? '');
+const allowInsecure = String(Deno.env.get('ALLOW_INSECURE_WEBHOOKS') ?? '').toLowerCase() === 'true';
+
 
     // Verify signature if configured.
     if (webhookSecret) {

@@ -2,6 +2,8 @@ import { handleOptions } from '../_shared/cors.ts';
 import { createServiceClient } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { shaHex, timingSafeEqual } from '../_shared/crypto.ts';
+import { findProvider, getPaymentsPublicConfig } from '../_shared/paymentsConfig.ts';
+import { CURRENCY_IQD } from '../_shared/constants.ts';
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -59,16 +61,14 @@ Deno.serve(async (req) => {
       // ignore duplicates
     }
 
-    const { data: provider, error: provErr } = await service
-      .from('payment_providers')
-      .select('code,enabled,config')
-      .eq('code', 'asiapay')
-      .maybeSingle();
-    if (provErr || !provider) return errorJson('Provider not found', 404, 'NOT_FOUND');
-    if (!provider.enabled) return errorJson('Provider disabled', 409, 'PROVIDER_DISABLED');
+const paymentsCfg = getPaymentsPublicConfig();
+const provider = findProvider(paymentsCfg, 'asiapay');
+if (!provider) return errorJson('Provider not found', 404, 'NOT_FOUND');
+if (!provider.enabled) return errorJson('Provider disabled', 409, 'PROVIDER_DISABLED');
+if (provider.kind !== 'asiapay') return errorJson('Provider misconfigured', 409, 'PROVIDER_DISABLED');
 
-    const cfg = ((provider as any).config ?? {}) as Record<string, unknown>;
-    const secret = String(cfg.secure_hash_secret ?? cfg.secureHashSecret ?? Deno.env.get('ASIAPAY_SECURE_HASH_SECRET') ?? '');
+const secret = String(Deno.env.get('ASIAPAY_SECURE_HASH_SECRET') ?? '');
+
 
     // Verify SecureHash if secret is configured.
     if (secret) {
@@ -109,8 +109,8 @@ Deno.serve(async (req) => {
 
     const amtNum = Number(amt);
     const amtIqd = Number.isFinite(amtNum) ? Math.trunc(amtNum) : NaN;
-    const cfgCurr = String((cfg.curr_code ?? cfg.currCode ?? '') || '').trim();
-    const currOk = !cfgCurr || !curr || String(curr).trim() === cfgCurr || String(curr).trim().toUpperCase() === 'IQD';
+    const cfgCurr = String(Deno.env.get('ASIAPAY_CURR_CODE') ?? '').trim();
+    const currOk = !cfgCurr || !curr || String(curr).trim() === cfgCurr || String(curr).trim().toUpperCase() === CURRENCY_IQD;
     const amtOk = Number.isFinite(amtIqd) && amtIqd > 0 && amtIqd === Number(intent.amount_iqd);
 
     if (!currOk || !amtOk) {

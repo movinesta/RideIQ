@@ -35,7 +35,8 @@ Set secrets in Supabase Dashboard → Project Settings → Functions → Secrets
 
 Payment provider secrets (as applicable):
 
-- [ ] `ZAINCASH_MERCHANT_ID`, `ZAINCASH_SECRET`, `ZAINCASH_MSISDN`, `ZAINCASH_BASE_URL`
+- [ ] `PAYMENTS_PUBLIC_CONFIG_JSON` (providers + presets)
+- [ ] `ZAINCASH_V2_BASE_URL`, `ZAINCASH_V2_CLIENT_ID`, `ZAINCASH_V2_CLIENT_SECRET`, `ZAINCASH_V2_API_KEY`, `ZAINCASH_V2_SERVICE_TYPE` (and optionally `ZAINCASH_V2_SCOPE`, `ZAINCASH_V2_LANGUAGE`)
 - [ ] AsiaPay / QiCard secrets
 
 ## 4) Auth URLs

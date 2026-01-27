@@ -137,7 +137,7 @@ type RealtimePayload<T> = {
 };
 
 function getTripShareUrlFromNotification(n: UserNotificationRow): string | null {
-  const token = (n?.data as any)?.token ?? (n?.data as any)?.share?.token;
+  const token = n.data.token ?? (typeof n.data.share === 'object' && n.data.share !== null ? (n.data.share as Record<string, unknown>).token : undefined);
   if (typeof token !== 'string') return null;
   const t = token.trim();
   if (!t) return null;
@@ -145,8 +145,8 @@ function getTripShareUrlFromNotification(n: UserNotificationRow): string | null 
 }
 
 function getTripShareExpiresAt(n: UserNotificationRow): string | null {
-  const v = (n?.data as any)?.expires_at ?? (n?.data as any)?.share?.expires_at;
-  return typeof v === 'string' && v.trim() ? v : null;
+  const expiresAt = n.data.expires_at ?? (typeof n.data.share === 'object' && n.data.share !== null ? (n.data.share as Record<string, unknown>).expires_at : undefined);
+  return typeof expiresAt === 'string' && expiresAt.trim() ? expiresAt : null;
 }
 
 function submitPost(url: string, fields: Record<string, string>) {
@@ -224,6 +224,33 @@ async function fetchWalletAccount(): Promise<WalletAccountRow> {
   return row as WalletAccountRow;
 }
 
+
+type PaymentsConfigResponse = {
+  ok: boolean;
+  providers: Array<{
+    code: string;
+    name: string;
+    kind: string;
+    presets: Array<{
+      id: string;
+      label: string;
+      amount_iqd: number;
+      bonus_iqd: number;
+    }>;
+  }>;
+};
+
+async function fetchPaymentsConfig(): Promise<PaymentsConfigResponse> {
+  const { data, error } = await supabase.functions.invoke('payments-config');
+  if (error) throw error;
+  const out = data as any;
+  if (!out || out.ok !== true || !Array.isArray(out.providers)) {
+    throw new Error('Failed to load payments config');
+  }
+  return out as PaymentsConfigResponse;
+}
+
+
 async function fetchEntries(): Promise<WalletEntryRow[]> {
   const { data, error } = await supabase
     .from('wallet_entries')
@@ -254,26 +281,7 @@ async function fetchTopups(): Promise<TopupIntentRow[]> {
   return (data as unknown as TopupIntentRow[]) ?? [];
 }
 
-async function fetchProviders(): Promise<ProviderRow[]> {
-  const { data, error } = await supabase
-    .from('payment_providers')
-    .select('code,name,enabled,sort_order')
-    .order('sort_order', { ascending: true })
-    .order('name', { ascending: true });
-  if (error) throw error;
-  return (data as unknown as ProviderRow[]) ?? [];
-}
 
-async function fetchPackages(): Promise<PackageRow[]> {
-  const { data, error } = await supabase
-    .from('topup_packages')
-    .select('id,label,amount_iqd,bonus_iqd,active,sort_order')
-    .eq('active', true)
-    .order('sort_order', { ascending: true })
-    .order('amount_iqd', { ascending: true });
-  if (error) throw error;
-  return (data as unknown as PackageRow[]) ?? [];
-}
 
 async function fetchWithdrawRequests(): Promise<WithdrawRequestRow[]> {
   const { data, error } = await supabase
@@ -315,7 +323,7 @@ export default function WalletPage() {
 
   const [tab, setTab] = React.useState<TabKey>('balance');
   const [providerCode, setProviderCode] = React.useState('');
-  const [packageId, setPackageId] = React.useState('');
+  const [presetId, setPresetId] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [toast, setToast] = React.useState<string | null>(null);
   const [giftCode, setGiftCode] = React.useState('');
@@ -350,8 +358,15 @@ export default function WalletPage() {
     refetchIntervalInBackground: false,
   });
 
-  const providersQ = useQuery({ queryKey: ['payment_providers'], queryFn: fetchProviders });
-  const packagesQ = useQuery({ queryKey: ['topup_packages'], queryFn: fetchPackages });
+  const paymentsCfgQ = useQuery({ queryKey: ['payments_config'], queryFn: fetchPaymentsConfig });
+  const providerNameByCode = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of paymentsCfgQ.data?.providers ?? []) map[p.code] = p.name;
+    return map;
+  }, [paymentsCfgQ.data]);
+
+  const providerLabel = (code: string) => providerNameByCode[code] ?? code;
+
 
   const entriesQ = useQuery({ queryKey: ['wallet_entries'], queryFn: fetchEntries, enabled: tab === 'transactions' });
   const topupsQ = useQuery({ queryKey: ['topup_intents'], queryFn: fetchTopups, enabled: tab === 'topups' });
@@ -467,14 +482,20 @@ export default function WalletPage() {
     return { active, captured, released, count: holds.length };
   }, [holdsQ.data]);
 
-  const enabledProviders = (providersQ.data ?? []).filter((p) => p.enabled);
+      const enabledProviders = paymentsCfgQ.data?.providers ?? [];
   React.useEffect(() => {
     if (!providerCode && enabledProviders.length > 0) setProviderCode(enabledProviders[0].code);
   }, [providerCode, enabledProviders]);
 
-  React.useEffect(() => {
-    if (!packageId && (packagesQ.data?.length ?? 0) > 0) setPackageId(packagesQ.data![0].id);
-  }, [packageId, packagesQ.data]);
+const selectedProvider = (paymentsCfgQ.data?.providers ?? []).find((p) => p.code === providerCode) ?? null;
+
+React.useEffect(() => {
+  if (!providerCode) return;
+  const p = (paymentsCfgQ.data?.providers ?? []).find((x) => x.code === providerCode);
+  const presets = p?.presets ?? [];
+  if (presets.length === 0) return;
+  if (!presetId || !presets.some((pr) => pr.id === presetId)) setPresetId(presets[0].id);
+}, [providerCode, presetId, paymentsCfgQ.data]);
 
   const enabledWithdrawMethods = React.useMemo(
     () => (withdrawMethodsQ.data ?? []).filter((m) => m.enabled),
@@ -487,8 +508,8 @@ export default function WalletPage() {
     }
   }, [enabledWithdrawMethods, withdrawKind]);
 
-  const selectedPackage = (packagesQ.data ?? []).find((p) => p.id === packageId) ?? null;
-  const totalPoints = selectedPackage ? (selectedPackage.amount_iqd ?? 0) + (selectedPackage.bonus_iqd ?? 0) : 0;
+    const selectedPreset = selectedProvider?.presets?.find((p) => p.id === presetId) ?? null;
+    const totalPoints = selectedPreset ? (selectedPreset.amount_iqd ?? 0) + (selectedPreset.bonus_iqd ?? 0) : 0;
 
   const acct = walletQ.data;
   const available = acct ? Math.max(0, (acct.balance_iqd ?? 0) - (acct.held_iqd ?? 0)) : 0;
@@ -517,14 +538,14 @@ export default function WalletPage() {
 
   async function doTopup() {
     if (!providerCode) return setToast('Pick a payment method.');
-    if (!packageId) return setToast('Pick a top-up package.');
+    if (!presetId) return setToast('Pick a top-up preset.');
 
     setBusy(true);
     setToast(null);
     try {
       const idempotencyKey = crypto.randomUUID();
       const { data, error } = await supabase.functions.invoke('topup-create', {
-        body: { provider_code: providerCode, package_id: packageId, idempotency_key: idempotencyKey },
+        body: { provider_code: providerCode, package_id: presetId, idempotency_key: idempotencyKey },
       });
       if (error) throw error;
 
@@ -706,12 +727,12 @@ export default function WalletPage() {
             <div className="font-semibold">Top up</div>
             <div className="text-sm text-gray-500 mt-1">Choose a payment method and a package. You will be redirected to complete payment.</div>
 
-            {providersQ.isLoading ? <div className="text-sm text-gray-500 mt-3">Loading providers…</div> : null}
-            {providersQ.error ? <div className="text-sm text-red-700 mt-3">{errorText(providersQ.error)}</div> : null}
+            {paymentsCfgQ.isLoading ? <div className="text-sm text-gray-500 mt-3">Loading payment methods…</div> : null}
+            {paymentsCfgQ.error ? <div className="text-sm text-red-700 mt-3">{errorText(paymentsCfgQ.error)}</div> : null}
 
             {enabledProviders.length === 0 ? (
               <div className="mt-3 text-sm rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
-                No payment providers are enabled yet. An admin must enable providers in <span className="font-mono">payment_providers</span>.
+                No payment methods are enabled yet. Configure <span className="font-mono">PAYMENTS_PUBLIC_CONFIG_JSON</span> in Supabase Edge Function secrets.
               </div>
             ) : null}
 
@@ -732,13 +753,13 @@ export default function WalletPage() {
               </label>
 
               <label className="text-sm sm:col-span-2">
-                <div className="text-xs text-gray-500">Package</div>
+                <div className="text-xs text-gray-500">Preset</div>
                 <select
                   className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2"
-                  value={packageId}
-                  onChange={(e) => setPackageId(e.target.value)}
+                  value={presetId}
+                  onChange={(e) => setPresetId(e.target.value)}
                 >
-                  {(packagesQ.data ?? []).map((p) => (
+                  {(selectedProvider?.presets ?? []).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.label}
                     </option>
@@ -747,11 +768,11 @@ export default function WalletPage() {
               </label>
             </div>
 
-            {selectedPackage ? (
+            {selectedPreset ? (
               <div className="mt-3 text-sm text-gray-700">
-                Amount: <span className="font-semibold">{formatIQD(selectedPackage.amount_iqd)}</span>
-                {selectedPackage.bonus_iqd > 0 ? (
-                  <> + Bonus: <span className="font-semibold">{formatIQD(selectedPackage.bonus_iqd)}</span></>
+                Amount: <span className="font-semibold">{formatIQD(selectedPreset.amount_iqd)}</span>
+                {selectedPreset.bonus_iqd > 0 ? (
+                  <> + Bonus: <span className="font-semibold">{formatIQD(selectedPreset.bonus_iqd)}</span></>
                 ) : null}
                 {' '}= Total credited: <span className="font-semibold">{formatIQD(totalPoints)}</span>
               </div>
@@ -761,7 +782,7 @@ export default function WalletPage() {
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={busy || !providerCode || !packageId || enabledProviders.length === 0}
+                disabled={busy || !providerCode || !presetId || enabledProviders.length === 0}
                 onClick={() => void doTopup()}
               >
                 {busy ? 'Redirecting…' : 'Continue'}
@@ -969,7 +990,7 @@ export default function WalletPage() {
               >
                 {enabledWithdrawMethods.map((m) => (
                   <option key={m.payout_kind} value={m.payout_kind}>
-                    {m.payout_kind === 'zaincash' ? 'ZainCash' : m.payout_kind === 'qicard' ? 'QiCard' : 'AsiaPay'}
+                    {providerLabel(m.payout_kind)}
                   </option>
                 ))}
               </select>
@@ -1064,10 +1085,9 @@ export default function WalletPage() {
 
           <div className="divide-y">
             {(notificationsQ.data ?? []).map((n) => {
-              const token = (n.data as any)?.token;
-              const url = n.kind === 'trip_share' && typeof token === 'string' && token.trim() ? buildShareUrl(token.trim()) : null;
-              const expiresAt = (n.data as any)?.expires_at;
-              const expiresLabel = expiresAt ? new Date(String(expiresAt)).toLocaleString() : null;
+              const url = n.kind === 'trip_share' ? getTripShareUrlFromNotification(n) : null;
+              const expiresAt = getTripShareExpiresAt(n);
+              const expiresLabel = expiresAt ? new Date(expiresAt).toLocaleString() : null;
 
               return (
                 <div key={n.id} className="py-3 flex items-start justify-between gap-3">
