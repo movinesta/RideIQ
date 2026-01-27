@@ -9,7 +9,9 @@ Deno.serve(async (req) => {
 
   try {
     // Wallet UI reads this config; keep it auth-only.
-    await requireUser(req);
+    const { user, error } = await requireUser(req);
+    if (!user) return errorJson(error ?? 'Unauthorized', 401, 'UNAUTHORIZED');
+
 
     const cfg = getPaymentsPublicConfig();
     const providers = getEnabledProviders(cfg).map((p) => ({

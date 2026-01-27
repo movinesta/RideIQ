@@ -78,22 +78,6 @@ type WithdrawRequestRow = {
   cancelled_at?: string | null;
 };
 
-type ProviderRow = {
-  code: string;
-  name: string;
-  enabled: boolean;
-  sort_order: number;
-};
-
-type PackageRow = {
-  id: string;
-  label: string;
-  amount_iqd: number;
-  bonus_iqd: number;
-  active: boolean;
-  sort_order: number;
-};
-
 type WithdrawPolicyRow = {
   id: number;
   min_amount_iqd: number;
@@ -243,11 +227,11 @@ type PaymentsConfigResponse = {
 async function fetchPaymentsConfig(): Promise<PaymentsConfigResponse> {
   const { data, error } = await supabase.functions.invoke('payments-config');
   if (error) throw error;
-  const out = data as any;
-  if (!out || out.ok !== true || !Array.isArray(out.providers)) {
-    throw new Error('Failed to load payments config');
-  }
-  return out as PaymentsConfigResponse;
+  const out: unknown = data;
+  if (!out || typeof out !== 'object') throw new Error('Failed to load payments config');
+  const o = out as { ok?: unknown; providers?: unknown };
+  if (o.ok !== true || !Array.isArray(o.providers)) throw new Error('Failed to load payments config');
+  return o as PaymentsConfigResponse;
 }
 
 
@@ -482,20 +466,23 @@ export default function WalletPage() {
     return { active, captured, released, count: holds.length };
   }, [holdsQ.data]);
 
-      const enabledProviders = paymentsCfgQ.data?.providers ?? [];
+  const enabledProviders = React.useMemo(() => paymentsCfgQ.data?.providers ?? [], [paymentsCfgQ.data]);
+
   React.useEffect(() => {
     if (!providerCode && enabledProviders.length > 0) setProviderCode(enabledProviders[0].code);
   }, [providerCode, enabledProviders]);
 
-const selectedProvider = (paymentsCfgQ.data?.providers ?? []).find((p) => p.code === providerCode) ?? null;
+  const selectedProvider = React.useMemo(
+    () => enabledProviders.find((p) => p.code === providerCode) ?? null,
+    [enabledProviders, providerCode],
+  );
 
-React.useEffect(() => {
-  if (!providerCode) return;
-  const p = (paymentsCfgQ.data?.providers ?? []).find((x) => x.code === providerCode);
-  const presets = p?.presets ?? [];
-  if (presets.length === 0) return;
-  if (!presetId || !presets.some((pr) => pr.id === presetId)) setPresetId(presets[0].id);
-}, [providerCode, presetId, paymentsCfgQ.data]);
+  React.useEffect(() => {
+    if (!providerCode) return;
+    const presets = selectedProvider?.presets ?? [];
+    if (presets.length === 0) return;
+    if (!presetId || !presets.some((pr) => pr.id === presetId)) setPresetId(presets[0].id);
+  }, [providerCode, presetId, selectedProvider]);
 
   const enabledWithdrawMethods = React.useMemo(
     () => (withdrawMethodsQ.data ?? []).filter((m) => m.enabled),

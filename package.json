@@ -15,7 +15,11 @@
     "schema:check": "node scripts/schema-contract-check.mjs",
     "db:types": "node scripts/generate-db-types.mjs",
     "test:watch": "pnpm -C apps/web test:watch",
-    "check": "pnpm -C apps/web typecheck && pnpm -C apps/web lint && pnpm -C apps/web test && pnpm schema:check"
+    "check": "pnpm security:generate:check && pnpm -C apps/web typecheck && pnpm -C apps/web lint && pnpm -C apps/web test && pnpm schema:check && pnpm security:audit && pnpm security:rpc-audit",
+    "security:audit": "node scripts/audit-edge-functions.mjs",
+    "security:rpc-audit": "node scripts/audit-rpc-allowlist.mjs",
+    "security:generate": "node scripts/generate-security-hardening.mjs",
+    "security:generate:check": "node scripts/generate-security-hardening.mjs --check"
   },
   "pnpm": {
     "overrides": {

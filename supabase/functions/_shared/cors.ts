@@ -1,11 +1,15 @@
+import { envTrim } from './config.ts';
+
 function deriveAllowOrigin(): string {
   // Prefer explicit origin (useful when APP_BASE_URL contains a path).
-  const explicit = (Deno.env.get('APP_ORIGIN') ?? '').trim();
+  // Use envTrim() which is safe under Deno's permission model (tests often
+  // run without --allow-env).
+  const explicit = envTrim('APP_ORIGIN');
   if (explicit) return explicit;
 
   // Common: set APP_BASE_URL to your web app (e.g. http://localhost:5173 or
   // https://<user>.github.io/<repo>/). We convert to URL.origin.
-  const base = (Deno.env.get('APP_BASE_URL') ?? '').trim();
+  const base = envTrim('APP_BASE_URL');
   if (base) {
     try {
       return new URL(base).origin;

@@ -45,6 +45,12 @@ jobs:
       - name: Schema ↔ code contract check
         run: pnpm run schema:check
 
+      - name: Ensure DB hardening migration is in sync with RPC allowlist
+        run: pnpm run security:generate:check
+
+      - name: RPC allowlist audit
+        run: node scripts/audit-rpc-allowlist.mjs
+
       - name: Lint
         run: pnpm run lint
 

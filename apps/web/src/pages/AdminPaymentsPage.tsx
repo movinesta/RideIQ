@@ -24,9 +24,14 @@ type PaymentsConfigResponse = {
 async function fetchPaymentsConfig(): Promise<PaymentsConfigResponse> {
   const { data, error } = await supabase.functions.invoke('payments-config');
   if (error) throw error;
-  const out = data as any;
-  if (!out || out.ok !== true || !Array.isArray(out.providers)) throw new Error('Failed to load payments config');
-  return out as PaymentsConfigResponse;
+
+  const out: unknown = data;
+  if (!out || typeof out !== 'object') throw new Error('Failed to load payments config');
+
+  const o = out as { ok?: unknown; providers?: unknown };
+  if (o.ok !== true || !Array.isArray(o.providers)) throw new Error('Failed to load payments config');
+
+  return o as PaymentsConfigResponse;
 }
 
 const SAMPLE_PAYMENTS_PUBLIC_CONFIG_JSON = JSON.stringify(
@@ -72,14 +77,47 @@ const SAMPLE_PAYMENTS_PUBLIC_CONFIG_JSON = JSON.stringify(
 );
 
 export default function AdminPaymentsPage() {
-  const isAdmin = getIsAdmin();
+  const isAdminQ = useQuery<boolean, Error>({
+    queryKey: ['admin_is_admin'],
+    queryFn: () => getIsAdmin(),
+    staleTime: 60_000,
+  });
 
-  const cfgQ = useQuery({
+  const isAdmin = isAdminQ.data === true;
+
+  const cfgQ = useQuery<PaymentsConfigResponse, Error>({
     queryKey: ['admin_payments_config'],
     queryFn: fetchPaymentsConfig,
     enabled: isAdmin,
     staleTime: 15_000,
   });
+
+  if (isAdminQ.isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <AdminNav />
+        <div className="max-w-4xl mx-auto p-6">
+          <div className="bg-white rounded-xl shadow p-6">
+            <div className="text-lg font-semibold">Checking permissions…</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAdminQ.error) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <AdminNav />
+        <div className="max-w-4xl mx-auto p-6">
+          <div className="bg-white rounded-xl shadow p-6">
+            <div className="text-lg font-semibold">Failed to load</div>
+            <div className="text-sm text-red-700 mt-2">{errorText(isAdminQ.error)}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAdmin) {
     return (
@@ -126,7 +164,7 @@ export default function AdminPaymentsPage() {
 
           {cfgQ.data ? (
             <div className="mt-4 space-y-4">
-              {cfgQ.data.providers.map((p) => (
+              {cfgQ.data.providers.map((p: PaymentsConfigResponse['providers'][number]) => (
                 <div key={p.code} className="border rounded-xl p-4">
                   <div className="flex items-center justify-between">
                     <div>
@@ -143,7 +181,7 @@ export default function AdminPaymentsPage() {
                       <div className="text-sm text-gray-500 mt-1">No active presets.</div>
                     ) : (
                       <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {p.presets.map((x) => (
+                        {p.presets.map((x: PaymentsConfigResponse['providers'][number]['presets'][number]) => (
                           <div key={x.id} className="border rounded-lg p-3">
                             <div className="text-sm font-semibold">{x.label}</div>
                             <div className="text-xs text-gray-500 mt-1">

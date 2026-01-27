@@ -1,0 +1,27 @@
+{
+  "anon": [
+    "resolve_service_area",
+    "quote_breakdown_iqd"
+  ],
+  "authenticated": [
+    "wallet_get_my_account",
+    "wallet_request_withdraw",
+    "wallet_cancel_withdraw",
+    "redeem_gift_code",
+    "submit_ride_rating",
+    "create_ride_incident",
+    "user_notifications_mark_read",
+    "user_notifications_mark_all_read",
+
+    "is_admin",
+    "admin_create_service_area_bbox_v2",
+    "admin_record_ride_refund",
+    "admin_ridecheck_escalate",
+    "admin_ridecheck_resolve",
+    "admin_update_pricing_config_caps",
+    "admin_update_ride_incident",
+    "admin_wallet_integrity_snapshot",
+
+    "whatsapp_booking_token_create_v1"
+  ]
+}

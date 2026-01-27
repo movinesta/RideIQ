@@ -27,7 +27,8 @@ Write-Host "Attempting Supabase database lint/tests (optional)..." -ForegroundCo
 
 if (Get-Command supabase -ErrorAction SilentlyContinue) {
   try {
-    supabase db start | Out-Null
+    supabase start | Out-Null
+    supabase db reset --no-seed | Out-Null
     supabase db lint --level error
     supabase test db
   } finally {

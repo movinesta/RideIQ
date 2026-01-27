@@ -54,6 +54,11 @@ verify_jwt = false
 [functions.asiapay-return]
 verify_jwt = false
 
+# Wallet/UI config endpoint (we validate auth inside the function; gateway JWT verification disabled)
+[functions.payments-config]
+verify_jwt = false
+
+
 # Public view endpoints (no user JWT)
 [functions.trip-share-view]
 verify_jwt = false

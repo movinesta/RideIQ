@@ -29,12 +29,13 @@ echo "Attempting Supabase database lint/tests (optional)..."
 if command -v supabase >/dev/null 2>&1; then
   # Note: Supabase CLI uses Docker for local dev. If Docker isn't available, these will fail.
   set +e
-  supabase db start >/dev/null 2>&1
+  supabase start >/dev/null 2>&1
   DB_STARTED=$?
   set -e
 
   if [ "$DB_STARTED" -eq 0 ]; then
-    echo "Supabase DB started. Running db lint + pgTAP..."
+    echo "Supabase stack started. Resetting local DB (apply migrations), then running db lint + pgTAP..."
+    supabase db reset --no-seed
     supabase db lint --level error
     supabase test db
     echo "Stopping Supabase..."

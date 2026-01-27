@@ -2,12 +2,12 @@
 -- PostgreSQL database dump
 --
 
-\restrict wg8mkBsXNy7PY1j3IPizEoeYdleFhFGzk69p23xY9vuRugGPd53q6hbJs79iv6U
+\restrict 25QVgjCaJlJ4tBwvmLwYOje9uvvxfEm3Zjjh4Dd3dDwRv5MOaDm9r03mbaaUsht
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.7
 
--- Started on 2026-01-27 08:30:13
+-- Started on 2026-01-27 16:27:01
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -22,8 +22,8 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- TOC entry 5109 (class 0 OID 17264)
--- Dependencies: 383
+-- TOC entry 5121 (class 0 OID 17264)
+-- Dependencies: 385
 -- Data for Name: buckets; Type: TABLE DATA; Schema: storage; Owner: supabase_storage_admin
 --
 
@@ -35,11 +35,11 @@ driver-docs	driver-docs	\N	2026-01-26 00:32:47.231078+00	2026-01-26 00:32:47.231
 \.
 
 
--- Completed on 2026-01-27 08:30:45
+-- Completed on 2026-01-27 16:27:32
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict wg8mkBsXNy7PY1j3IPizEoeYdleFhFGzk69p23xY9vuRugGPd53q6hbJs79iv6U
+\unrestrict 25QVgjCaJlJ4tBwvmLwYOje9uvvxfEm3Zjjh4Dd3dDwRv5MOaDm9r03mbaaUsht
 

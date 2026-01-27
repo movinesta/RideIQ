@@ -18,8 +18,11 @@ jobs:
         with:
           version: latest
 
-      - name: Start local Supabase (migrations applied)
-        run: supabase db start
+      - name: Start local Supabase
+        run: supabase start
+
+      - name: Reset local DB (apply migrations)
+        run: supabase db reset --no-seed
 
       - name: Lint database (plpgsql_check)
         run: supabase db lint --level error
