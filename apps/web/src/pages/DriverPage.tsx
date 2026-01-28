@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { FunctionsHttpError, type RealtimeChannel } from '@supabase/supabase-js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -355,6 +356,7 @@ export default function DriverPage() {
             try {
               const { error } = await supabase.from('driver_locations').upsert({
                 driver_id: uid,
+                      vehicle_type: vehicleType,
                 lat,
                 lng,
                 accuracy_m: acc ?? undefined,
@@ -489,7 +491,13 @@ export default function DriverPage() {
     }
   };
 
-  const [vehicleType, setVehicleType] = React.useState('car');
+  const [baseVehicle, setBaseVehicle] = React.useState<'car' | 'motorcycle' | 'cargo'>('car');
+  const [carCategory, setCarCategory] = React.useState<'private' | 'taxi'>('private');
+  const vehicleType = React.useMemo(() => {
+    if (baseVehicle === 'car') return carCategory === 'taxi' ? 'car_taxi' : 'car_private';
+    if (baseVehicle === 'motorcycle') return 'motorcycle';
+    return 'cargo';
+  }, [baseVehicle, carCategory]);
   const [make, setMake] = React.useState('');
   const [model, setModel] = React.useState('');
   const [color, setColor] = React.useState('');
@@ -498,9 +506,18 @@ export default function DriverPage() {
   return (
     <div className="space-y-6">
       <div className="card p-5">
-        <div className="text-base font-semibold">Driver console</div>
-        <div className="text-sm text-gray-500 mt-1">
-          Onboard once, go online, track location, accept requests. Pickup PIN + RideCheck safety are integrated.
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-base font-semibold">Driver console</div>
+            <div className="text-sm text-gray-500 mt-1">
+              Onboard once, go online, track location, accept requests. Pickup PIN + RideCheck safety are integrated.
+            </div>
+          </div>
+          {driver.data ? (
+            <Link className="btn" to="/driver/deliveries">
+              Deliveries
+            </Link>
+          ) : null}
         </div>
 
         {driver.isLoading && <div className="mt-4 text-sm text-gray-500">{t('common.loading')}</div>}
@@ -514,7 +531,51 @@ export default function DriverPage() {
             </div>
 
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Vehicle type" value={vehicleType} onChange={setVehicleType} />
+              <div>
+                <div className="label">Vehicle</div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className={baseVehicle === 'car' ? 'btn btn-primary' : 'btn'}
+                    onClick={() => setBaseVehicle('car')}
+                    type="button"
+                  >
+                    Car
+                  </button>
+                  <button
+                    className={baseVehicle === 'motorcycle' ? 'btn btn-primary' : 'btn'}
+                    onClick={() => setBaseVehicle('motorcycle')}
+                    type="button"
+                  >
+                    Motorcycle
+                  </button>
+                  <button
+                    className={baseVehicle === 'cargo' ? 'btn btn-primary' : 'btn'}
+                    onClick={() => setBaseVehicle('cargo')}
+                    type="button"
+                  >
+                    Cargo
+                  </button>
+                </div>
+                {baseVehicle === 'car' ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      className={carCategory === 'private' ? 'btn btn-primary' : 'btn'}
+                      onClick={() => setCarCategory('private')}
+                      type="button"
+                    >
+                      Private
+                    </button>
+                    <button
+                      className={carCategory === 'taxi' ? 'btn btn-primary' : 'btn'}
+                      onClick={() => setCarCategory('taxi')}
+                      type="button"
+                    >
+                      Taxi
+                    </button>
+                  </div>
+                ) : null}
+                <div className="mt-2 text-xs opacity-70">Selected: {vehicleType}</div>
+              </div>
               <Field label="Make" value={make} onChange={setMake} placeholder="Toyota" />
               <Field label="Model" value={model} onChange={setModel} placeholder="Camry" />
               <Field label="Color" value={color} onChange={setColor} placeholder="White" />
@@ -540,6 +601,7 @@ export default function DriverPage() {
 
                     const { error: vErr } = await supabase.from('driver_vehicles').insert({
                       driver_id: uid,
+                      vehicle_type: vehicleType,
                       make: make || null,
                       model: model || null,
                       color: color || null,

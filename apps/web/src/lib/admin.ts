@@ -2,15 +2,14 @@ import { supabase } from './supabaseClient';
 
 /**
  * Returns true if the current authenticated user is an admin.
- * Uses the profiles.is_admin flag.
+ *
+ * Best practice:
+ * - Do NOT rely on a writable flag in profiles (risk: self-promotion).
+ * - Use a SECURITY DEFINER RPC in Postgres: public.is_admin()
  */
 export async function getIsAdmin(): Promise<boolean> {
-  const { data: sess, error: sessErr } = await supabase.auth.getSession();
-  if (sessErr) throw sessErr;
-  const uid = sess.session?.user.id;
-  if (!uid) return false;
-
-  const { data, error } = await supabase.from('profiles').select('is_admin').eq('id', uid).maybeSingle();
+  const { data, error } = await supabase.rpc('is_admin');
   if (error) throw error;
-  return !!data?.is_admin;
+  // Supabase can return boolean directly or wrapped depending on configuration
+  return !!(Array.isArray(data) ? data[0] : data);
 }

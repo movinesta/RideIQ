@@ -174,12 +174,14 @@ Deno.serve((req) =>
     const ip = getClientIp(req);
     await consumeRateLimit({ key: `wa_send:${ip}`, limit: 60, windowSeconds: 60 });
 
-    const user = await requireUser(req);
+    const { user, error: authErr } = await requireUser(req);
+    if (!user) return errorJson(String(authErr ?? 'Unauthorized'), 401, 'UNAUTHORIZED');
     const anon = createAnonClient(req);
 
-    const { data: prof, error: profErr } = await anon.from('profiles').select('is_admin').eq('id', user.id).maybeSingle();
-    if (profErr) return errorJson(profErr.message, 500, 'INTERNAL');
-    if (!prof?.is_admin) return errorJson('not_admin', 403, 'FORBIDDEN');
+    // Gate by admin role using the server-side RPC (do not trust client-visible flags)
+    const { data: isAdmin, error: adminErr } = await anon.rpc('is_admin');
+    if (adminErr) return errorJson(adminErr.message, 500, 'INTERNAL');
+    if (!isAdmin) return errorJson('not_admin', 403, 'FORBIDDEN');
 
     const body = (await req.json().catch(() => ({}))) as Body;
     const threadId = (body.thread_id ?? '').trim();

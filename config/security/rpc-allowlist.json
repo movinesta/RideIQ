@@ -1,27 +1,44 @@
 {
   "anon": [
-    "resolve_service_area",
-    "quote_breakdown_iqd"
+    "quote_breakdown_iqd",
+    "resolve_service_area"
   ],
   "authenticated": [
-    "wallet_get_my_account",
-    "wallet_request_withdraw",
-    "wallet_cancel_withdraw",
-    "redeem_gift_code",
-    "submit_ride_rating",
-    "create_ride_incident",
-    "user_notifications_mark_read",
-    "user_notifications_mark_all_read",
-
-    "is_admin",
+    "achievement_claim",
     "admin_create_service_area_bbox_v2",
     "admin_record_ride_refund",
     "admin_ridecheck_escalate",
     "admin_ridecheck_resolve",
+    "admin_set_merchant_status",
     "admin_update_pricing_config_caps",
     "admin_update_ride_incident",
     "admin_wallet_integrity_snapshot",
-
+    "admin_withdraw_approve",
+    "admin_withdraw_mark_paid",
+    "admin_withdraw_reject",
+    "create_ride_incident",
+    "driver_claim_order_delivery",
+    "is_admin",
+    "merchant_chat_get_or_create_thread",
+    "merchant_chat_list_messages",
+    "merchant_chat_mark_read",
+    "merchant_order_create",
+    "merchant_order_get_or_create_chat_thread",
+    "merchant_order_request_delivery",
+    "merchant_order_set_status",
+    "redeem_gift_code",
+    "referral_apply_code",
+    "referral_claim",
+    "referral_status",
+    "ride_chat_get_or_create_thread",
+    "set_my_active_role",
+    "submit_ride_rating",
+    "user_notifications_mark_all_read",
+    "user_notifications_mark_read",
+    "wallet_cancel_withdraw",
+    "wallet_get_my_account",
+    "wallet_request_withdraw",
+    "whatsapp_booking_token_consume_v1",
     "whatsapp_booking_token_create_v1"
   ]
 }

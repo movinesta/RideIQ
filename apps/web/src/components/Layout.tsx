@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabaseClient';
 import NotificationsButton from './NotificationsButton';
+import RoleSwitcher from './RoleSwitcher';
 import { debounce } from '../lib/debounce';
 import i18n, { applyDocumentLocale, LOCALE_STORAGE_KEY, normalizeLanguage, type SupportedLanguage } from '../i18n';
 
@@ -38,13 +39,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       const id = sess.session?.user.id ?? null;
       if (!id) return;
       setUid(id);
-      const { data, error } = await supabase.from('profiles').select('is_admin,locale').eq('id', id).maybeSingle();
+      const { data, error } = await supabase.from('profiles').select('locale').eq('id', id).maybeSingle();
+      const { data: adminFlag, error: adminErr } = await supabase.rpc('is_admin');
       if (!alive) return;
       if (error) {
         setIsAdmin(false);
         return;
       }
-      setIsAdmin(!!data?.is_admin);
+      setIsAdmin(!adminErr && !!(Array.isArray(adminFlag) ? adminFlag[0] : adminFlag));
 
       const profileLocale = normalizeLanguage(data?.locale ?? null);
       setLanguage(profileLocale);
@@ -100,11 +102,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           <nav className="flex items-center gap-2">
+            <Tab to="/home" active={loc.pathname.startsWith('/home')}>{t('nav.home')}</Tab>
             <Tab to="/rider" active={loc.pathname.startsWith('/rider')}>{t('nav.rider')}</Tab>
             <Tab to="/scheduled" active={loc.pathname.startsWith('/scheduled')}>{t('nav.scheduled')}</Tab>
+            <Tab to="/businesses" active={loc.pathname.startsWith('/business') || loc.pathname.startsWith('/businesses')}>{t('nav.businesses')}</Tab>
+            <Tab to="/orders" active={loc.pathname.startsWith('/orders') || loc.pathname.startsWith('/checkout')}>{t('nav.orders')}</Tab>
+            <Tab to="/chats" active={loc.pathname.startsWith('/chats')}>{t('nav.chats')}</Tab>
             <Tab to="/driver" active={loc.pathname.startsWith('/driver')}>{t('nav.driver')}</Tab>
+            <Tab to="/merchant" active={loc.pathname.startsWith('/merchant') || loc.pathname.startsWith('/merchant-chat')}>{t('nav.merchant')}</Tab>
             <Tab to="/wallet" active={loc.pathname.startsWith('/wallet')}>{t('nav.wallet')}</Tab>
             <Tab to="/history" active={loc.pathname.startsWith('/history')}>{t('nav.history')}</Tab>
+            {uid ? <RoleSwitcher /> : null}
             {uid ? <NotificationsButton count={unread} to="/wallet?tab=notifications" /> : null}
             {isAdmin ? (
               <Tab to="/admin/payments" active={loc.pathname.startsWith('/admin')}>{t('nav.admin')}</Tab>

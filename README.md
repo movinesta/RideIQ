@@ -12,22 +12,27 @@ A production-minded ride-sharing starter (rider + driver + admin) built on:
 
 ## Database security hardening (REQUIRED)
 
-This repo uses **deny-by-default** database privileges:
+This repo applies **least-privilege** database access:
 
-- Untrusted roles (`anon`, `authenticated`, `PUBLIC`) cannot `CREATE` objects in schema `public`.
-- `profiles.is_admin` is not writable by end users.
-- Function `EXECUTE` privileges are revoked broadly, then re-granted only to a small allowlist of RPCs used by the app.
+- `profiles.is_admin` is not writable by end users (admin membership is stored in `admin_users`).
+- Wallet balances are not writable from the client (mutations happen through server-side functions / Edge Functions).
 
 ### Apply on a hosted Supabase project (recommended)
 
 Run these migrations in order via Supabase Dashboard → **SQL Editor**:
 
-1) `supabase/migrations/202601270001_p0_security_hardening.sql`
-2) `supabase/migrations/202601270003_fix_security_definer_search_path.sql`
-3) `supabase/migrations/202601270002_admin_security_audit.sql`
-4) `supabase/migrations/202601270004_admin_policy_perf_audit.sql`
+- Fresh project (recommended):
+  1) `supabase/migrations/20260127000100_init_public.sql`
+  2) `supabase/migrations/20260127000200_p0_security.sql`
 
-### Apply locally (Supabase CLI)
+- Existing project (already has the schema): run only
+  - `supabase/migrations/20260127000200_p0_security.sql`
+
+Notes:
+- Admin access is controlled via `public.admin_users` + the RPC `public.is_admin()`.
+- `profiles.is_admin` exists for backwards compatibility but is **not** used for authorization and is blocked from client updates.
+
+### Apply locally (Supabase CLI) (Supabase CLI)
 
 ```bash
 supabase start

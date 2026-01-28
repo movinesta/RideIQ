@@ -195,9 +195,17 @@ Deno.serve((req) => withRequestContext('safety-sos', req, async (ctx) => {
       });
     }
 
-    // Best-effort notify admins.
-    const { data: admins } = await service.from('profiles').select('id').eq('is_admin', true).limit(50);
-    const adminIds = (admins ?? []).map((a: any) => a.id).filter(Boolean);
+    // Best-effort notify admins (prefer membership table; keep legacy flag fallback).
+    const adminIdsSet = new Set<string>();
+    const { data: admins } = await service.from('admin_users').select('user_id').limit(100);
+    (admins ?? []).forEach((a: any) => {
+      if (a?.user_id) adminIdsSet.add(String(a.user_id));
+    });
+    const { data: legacy } = await service.from('profiles').select('id').eq('is_admin', true).limit(100);
+    (legacy ?? []).forEach((a: any) => {
+      if (a?.id) adminIdsSet.add(String(a.id));
+    });
+    const adminIds = Array.from(adminIdsSet).filter(Boolean);
     if (adminIds.length) {
       await service.from('user_notifications').insert(
         adminIds.map((uid: string) => ({

@@ -39,6 +39,9 @@ enable_signup = true
 [functions.zaincash-return]
 verify_jwt = false
 
+[functions.topup-create]
+verify_jwt = false
+
 [functions.zaincash-webhook]
 verify_jwt = false
 
@@ -94,3 +97,18 @@ verify_jwt = false
 
 [functions.trusted-contacts-dispatch]
 verify_jwt = false
+
+[functions.qicard-withdraw-webhook]
+verify_jwt = false
+
+[functions.asiapay-withdraw-webhook]
+verify_jwt = false
+
+[functions.zaincash-withdraw-webhook]
+verify_jwt = false
+
+[functions.payout-job-runner]
+verify_jwt = false
+
+[functions.payout-job-action]
+verify_jwt = true

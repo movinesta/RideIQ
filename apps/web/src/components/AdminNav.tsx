@@ -13,6 +13,8 @@ export default function AdminNav() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <Pill to="/admin/payments" active={loc.pathname.startsWith('/admin/payments')}>Payments</Pill>
+          <Pill to="/admin/withdrawals" active={loc.pathname.startsWith('/admin/withdrawals')}>Withdrawals</Pill>
+          <Pill to="/admin/payout-queue" active={loc.pathname.startsWith('/admin/payout-queue')}>Payout Queue</Pill>
           <Pill to="/admin/incidents" active={loc.pathname.startsWith('/admin/incidents')}>Incidents</Pill>
           <Pill to="/admin/ridecheck" active={loc.pathname.startsWith('/admin/ridecheck')}>RideCheck</Pill>
           <Pill to="/admin/integrity" active={loc.pathname.startsWith('/admin/integrity')}>Integrity</Pill>
@@ -21,6 +23,8 @@ export default function AdminNav() {
           <Pill to="/admin/pricing" active={loc.pathname.startsWith('/admin/pricing')}>Pricing</Pill>
           <Pill to="/admin/whatsapp" active={loc.pathname.startsWith('/admin/whatsapp')}>WhatsApp</Pill>
           <Pill to="/admin/service-areas" active={loc.pathname.startsWith('/admin/service-areas')}>Service Areas</Pill>
+          <Pill to="/admin/merchants" active={loc.pathname.startsWith('/admin/merchants')}>Merchants</Pill>
+          <Pill to="/admin/users" active={loc.pathname.startsWith('/admin/users')}>Users</Pill>
         </div>
       </div>
     </div>

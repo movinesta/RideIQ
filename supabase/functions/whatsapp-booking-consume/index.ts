@@ -15,7 +15,8 @@ Deno.serve((req) =>
     const ip = getClientIp(req);
     await consumeRateLimit({ key: `wa_booking_consume:${ip}`, limit: 20, windowSeconds: 60 });
 
-    const user = await requireUser(req);
+    const { user, error: authErr } = await requireUser(req);
+    if (!user) return errorJson(String(authErr ?? 'Unauthorized'), 401, 'UNAUTHORIZED');
 
     const body = (await req.json().catch(() => ({}))) as Body;
     const token = (body.token ?? '').trim();

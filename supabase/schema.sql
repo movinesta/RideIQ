@@ -29893,5 +29893,167 @@ ALTER EVENT TRIGGER pgrst_drop_watch OWNER TO supabase_admin;
 -- PostgreSQL database dump complete
 --
 
+-- ============================================================
+-- RideIQ: P0 SECURITY HARDENING (allowlist-driven)
+-- Required marker blocks for CI generator:
+--   RPC_ALLOWLIST_ANON
+--   RPC_ALLOWLIST_AUTHENTICATED
+-- ============================================================
+
+BEGIN;
+
+-- P0-1) Prevent privilege escalation via profiles.is_admin (if column exists)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name   = 'profiles'
+      AND column_name  = 'is_admin'
+  ) THEN
+    EXECUTE 'REVOKE INSERT (is_admin) ON TABLE public.profiles FROM authenticated;';
+    EXECUTE 'REVOKE UPDATE (is_admin) ON TABLE public.profiles FROM authenticated;';
+  END IF;
+EXCEPTION
+  WHEN undefined_table THEN
+    NULL;
+END $$;
+
+-- P0-2) Prevent search_path/object-shadowing risk: no CREATE in public schema for untrusted roles
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+REVOKE CREATE ON SCHEMA public FROM anon;
+REVOKE CREATE ON SCHEMA public FROM authenticated;
+
+-- P0-3) Default privileges (future objects): remove broad EXECUTE/table grants; keep service_role
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM authenticated;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON TABLES FROM anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES TO service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO service_role;
+
+-- P0-4) Remove anon table privileges from sensitive tables (only if they exist), keep support reads public
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT tablename
+    FROM pg_tables
+    WHERE schemaname = 'public'
+      AND tablename = ANY (ARRAY[
+        'ride_intents',
+        'ridecheck_events','ridecheck_responses','ridecheck_state',
+        'scheduled_rides',
+        'service_areas',
+        'sos_events',
+        'support_articles','support_sections','support_ticket_summaries',
+        'trusted_contact_events','trusted_contact_outbox',
+        'user_safety_settings',
+        'whatsapp_booking_tokens','whatsapp_messages','whatsapp_thread_notes','whatsapp_threads'
+      ])
+  LOOP
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM anon;', r.tablename);
+  END LOOP;
+
+  IF to_regclass('public.support_articles') IS NOT NULL THEN
+    EXECUTE 'GRANT SELECT ON TABLE public.support_articles TO anon;';
+  END IF;
+  IF to_regclass('public.support_sections') IS NOT NULL THEN
+    EXECUTE 'GRANT SELECT ON TABLE public.support_sections TO anon;';
+  END IF;
+END $$;
+
+-- P0-5) Function EXECUTE lockdown: revoke broad execute, then re-grant allowlists
+
+-- 5.1 revoke from PUBLIC/anon/authenticated on all public functions; keep service_role
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT
+      n.nspname AS schema_name,
+      p.proname AS func_name,
+      pg_get_function_identity_arguments(p.oid) AS args
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+  LOOP
+    EXECUTE format('REVOKE ALL ON FUNCTION %I.%I(%s) FROM PUBLIC;', r.schema_name, r.func_name, r.args);
+    EXECUTE format('REVOKE ALL ON FUNCTION %I.%I(%s) FROM anon;', r.schema_name, r.func_name, r.args);
+    EXECUTE format('REVOKE ALL ON FUNCTION %I.%I(%s) FROM authenticated;', r.schema_name, r.func_name, r.args);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %I.%I(%s) TO service_role;', r.schema_name, r.func_name, r.args);
+  END LOOP;
+END $$;
+
+-- 5.2 re-grant anon allowlist (marker block required)
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT n.nspname AS schema_name, p.proname AS func_name, pg_get_function_identity_arguments(p.oid) AS args
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+-- BEGIN RPC_ALLOWLIST_ANON
+      AND p.proname = ANY (ARRAY[
+        -- Generated from config/security/rpc-allowlist.json
+        'quote_breakdown_iqd',
+        'resolve_service_area'
+      ])
+-- END RPC_ALLOWLIST_ANON
+  LOOP
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %I.%I(%s) TO anon;', r.schema_name, r.func_name, r.args);
+  END LOOP;
+END $$;
+
+-- 5.3 re-grant authenticated allowlist (marker block required)
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT n.nspname AS schema_name, p.proname AS func_name, pg_get_function_identity_arguments(p.oid) AS args
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+-- BEGIN RPC_ALLOWLIST_AUTHENTICATED
+      AND p.proname = ANY (ARRAY[
+        -- Generated from config/security/rpc-allowlist.json
+        'achievement_claim',
+        'admin_create_service_area_bbox_v2',
+        'admin_record_ride_refund',
+        'admin_ridecheck_escalate',
+        'admin_ridecheck_resolve',
+        'admin_update_pricing_config_caps',
+        'admin_update_ride_incident',
+        'admin_wallet_integrity_snapshot',
+        'create_ride_incident',
+        'is_admin',
+        'redeem_gift_code',
+        'referral_apply_code',
+        'referral_claim',
+        'referral_status',
+        'ride_chat_get_or_create_thread',
+        'submit_ride_rating',
+        'user_notifications_mark_all_read',
+        'user_notifications_mark_read',
+        'wallet_cancel_withdraw',
+        'wallet_get_my_account',
+        'wallet_request_withdraw',
+        'whatsapp_booking_token_consume_v1',
+        'whatsapp_booking_token_create_v1'
+      ])
+-- END RPC_ALLOWLIST_AUTHENTICATED
+  LOOP
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %I.%I(%s) TO authenticated;', r.schema_name, r.func_name, r.args);
+  END LOOP;
+END $$;
+
+COMMIT;
+
 \unrestrict Mty13G6C1Lj2vjxiw5CLCUda0AXQbc20sf24HE9ORBjd3gCQ7Ww4pLsjGUULZAa
 

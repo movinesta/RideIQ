@@ -1,5 +1,6 @@
 import React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { errorText } from '../lib/errors';
 import { formatIQD, formatSignedIQD } from '../lib/money';
@@ -1073,6 +1074,8 @@ export default function WalletPage() {
           <div className="divide-y">
             {(notificationsQ.data ?? []).map((n) => {
               const url = n.kind === 'trip_share' ? getTripShareUrlFromNotification(n) : null;
+              const orderId = typeof (n as any).data === 'object' && (n as any).data ? ((n as any).data as any).order_id ?? null : null;
+                    const threadId = typeof (n as any).data === 'object' && (n as any).data ? ((n as any).data as any).thread_id ?? null : null;
               const expiresAt = getTripShareExpiresAt(n);
               const expiresLabel = expiresAt ? new Date(expiresAt).toLocaleString() : null;
 
@@ -1107,6 +1110,18 @@ export default function WalletPage() {
                             WhatsApp
                           </a>
                         </div>
+                      </div>
+                    ) : null}
+
+                    {orderId ? (
+                      <div className="mt-2">
+                        <Link className="btn" to={`/orders/${orderId}`}>View order</Link>
+                      </div>
+                    ) : null}
+
+                    {threadId ? (
+                      <div className="mt-2">
+                        <Link className="btn" to={`/merchant-chat/${threadId}`}>Open chat</Link>
                       </div>
                     ) : null}
                   </div>
