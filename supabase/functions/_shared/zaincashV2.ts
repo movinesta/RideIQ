@@ -101,6 +101,31 @@ function isHttpUrl(v: unknown): v is string {
   return typeof v === 'string' && /^https?:\/\//i.test(v);
 }
 
+function extractUuidFromText(text: string): string {
+  const m = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+  return m ? m[0] : '';
+}
+
+function extractTransactionIdFromRedirectUrl(redirectUrl: string): string {
+  // ZainCash sometimes encodes the transaction id into the redirectUrl itself.
+  // We only accept UUIDs (per the v2 docs).
+  const fromText = extractUuidFromText(redirectUrl);
+  if (isUuid(fromText)) return fromText;
+
+  try {
+    const u = new URL(redirectUrl);
+    const candidates = ['transactionId', 'transaction_id', 'txId', 'tx_id', 'id'];
+    for (const key of candidates) {
+      const v = u.searchParams.get(key);
+      if (v && isUuid(v)) return v;
+    }
+  } catch {
+    // ignore
+  }
+
+  return '';
+}
+
 function normKey(k: string): string {
   return k.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
@@ -278,6 +303,28 @@ export async function zaincashV2InitPayment(
       return nk.includes('redirect') && nk.includes('url') || nk.includes('payment') && nk.includes('url');
     });
     if (foundUrl && isHttpUrl(foundUrl.value)) redirectUrl = foundUrl.value;
+  }
+
+  // Third: if we have a redirectUrl but no explicit transactionId, try extracting it from the URL.
+  // This isn't a workaround: the transaction id is still the same UUID the gateway created —
+  // we're simply making the integration tolerant to provider response shape changes.
+  if (!transactionId && redirectUrl) {
+    const extracted = extractTransactionIdFromRedirectUrl(redirectUrl);
+    if (isUuid(extracted)) transactionId = extracted;
+  }
+
+  // If provider signals an error explicitly, surface it even if redirectUrl exists.
+  const providerErr =
+    (typeof (raw as any)?.err === 'string' && String((raw as any).err).trim()) ||
+    (typeof (raw as any)?.redirectError === 'string' && String((raw as any).redirectError).trim()) ||
+    (typeof (raw as any)?.message === 'string' && String((raw as any).message).trim()) ||
+    (typeof (raw as any)?.error === 'string' && String((raw as any).error).trim());
+  if (providerErr && (!transactionId || !redirectUrl)) {
+    const details = summarizeInitBody(raw);
+    const err: any = new Error(`ZainCash init error: ${providerErr}. ${details || ''}`.trim());
+    err.status = out.status;
+    err.body = raw;
+    throw err;
   }
 
   if (!transactionId || !redirectUrl) {
