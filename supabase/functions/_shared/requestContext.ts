@@ -5,8 +5,11 @@ export type RequestContext = {
   requestId: string;
   startedAtMs: number;
   headers: Record<string, string>;
+  userId?: string;
   log: (message: string, extra?: Record<string, unknown>) => void;
+  warn: (message: string, extra?: Record<string, unknown>) => void;
   error: (message: string, extra?: Record<string, unknown>) => void;
+  setUserId: (userId: string) => void;
 };
 
 function createRequestId(incoming: string | null): string {
@@ -37,17 +40,19 @@ function createRequestId(incoming: string | null): string {
   return `req-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 }
 
-function makeLogger(level: 'info' | 'error', fn: string, requestId: string) {
+function makeLogger(level: 'info' | 'warn' | 'error', fn: string, requestId: string, getUserId: () => string | undefined) {
   return (message: string, extra: Record<string, unknown> = {}) => {
     const payload = {
       level,
       fn,
       requestId,
+      userId: getUserId(),
       message,
       ...extra,
       ts: new Date().toISOString(),
     };
     if (level === 'error') console.error(JSON.stringify(payload));
+    else if (level === 'warn') console.warn(JSON.stringify(payload));
     else console.log(JSON.stringify(payload));
   };
 }
@@ -67,13 +72,21 @@ export async function withRequestContext(
 ): Promise<Response> {
   const requestId = createRequestId(req.headers.get('x-request-id'));
   const startedAtMs = Date.now();
+
+  // Mutable userId - set via setUserId after authentication
+  let userId: string | undefined;
+  const getUserId = () => userId;
+
   const ctx: RequestContext = {
     fn,
     requestId,
     startedAtMs,
     headers: { 'x-request-id': requestId },
-    log: makeLogger('info', fn, requestId),
-    error: makeLogger('error', fn, requestId),
+    get userId() { return userId; },
+    log: makeLogger('info', fn, requestId, getUserId),
+    warn: makeLogger('warn', fn, requestId, getUserId),
+    error: makeLogger('error', fn, requestId, getUserId),
+    setUserId: (id: string) => { userId = id; },
   };
 
   const isOptions = req.method === 'OPTIONS';
@@ -91,8 +104,15 @@ export async function withRequestContext(
     attachCors(headers);
 
     const wrapped = new Response(res.body, { status: res.status, headers });
+    const durationMs = Date.now() - startedAtMs;
+
     if (!isOptions) {
-      ctx.log('request.end', { status: res.status, duration_ms: Date.now() - startedAtMs });
+      // Warn on slow requests (>3 seconds)
+      const SLOW_THRESHOLD_MS = 3000;
+      if (durationMs > SLOW_THRESHOLD_MS) {
+        ctx.warn('request.slow', { status: res.status, duration_ms: durationMs });
+      }
+      ctx.log('request.end', { status: res.status, duration_ms: durationMs });
     }
     return wrapped;
   } catch (err) {

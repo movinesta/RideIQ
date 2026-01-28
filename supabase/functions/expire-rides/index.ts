@@ -129,6 +129,30 @@ Deno.serve(async (req) => {
       results.push({ action: 'mark_stale_drivers_offline', status: 'dry_run', stale_after_seconds: staleDriverAfterSeconds, limit: staleDriverLimit });
     }
 
+    // NEW: Release drivers stuck in 'reserved' status (LOGIC-01 fix)
+    const reservedStaleSeconds = clampInt(
+      Number(url.searchParams.get('reserved_stale_seconds') ?? '120'),
+      30,
+      600,
+    );
+    let stuckReservedReleased = 0;
+    if (!dryRun) {
+      const { data: releasedCount, error: reservedErr } = await service.rpc('admin_release_stuck_reserved_drivers', {
+        p_stale_after_seconds: reservedStaleSeconds,
+        p_limit: staleDriverLimit,
+      });
+
+      if (reservedErr) {
+        results.push({ action: 'release_stuck_reserved_drivers', status: 'error', error: reservedErr.message });
+      } else {
+        stuckReservedReleased = Number(releasedCount ?? 0) || 0;
+        results.push({ action: 'release_stuck_reserved_drivers', status: 'ok', released: stuckReservedReleased });
+      }
+    } else {
+      results.push({ action: 'release_stuck_reserved_drivers', status: 'dry_run', stale_after_seconds: reservedStaleSeconds, limit: staleDriverLimit });
+    }
+
+
     await logAppEvent({
       event_type: 'expire_rides',
       actor_type: 'system',
@@ -139,9 +163,11 @@ Deno.serve(async (req) => {
         stale_driver_after_seconds: staleDriverAfterSeconds,
         stale_driver_limit: staleDriverLimit,
         stale_drivers_marked_offline: staleDriversMarkedOffline,
+        stuck_reserved_released: stuckReservedReleased,
         processed: results.length,
         results,
       },
+
     });
 
     return json({ ok: true, dry_run: dryRun, processed: results.length, results });

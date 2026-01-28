@@ -3,57 +3,8 @@ import { createAnonClient, requireUser } from '../_shared/supabase.ts';
 import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { withRequestContext } from '../_shared/requestContext.ts';
-
-type Body = {
-  pickup_lat?: number;
-  pickup_lng?: number;
-  dropoff_lat?: number;
-  dropoff_lng?: number;
-  pickup_address?: string | null;
-  dropoff_address?: string | null;
-  product_code?: string;
-  scheduled_at?: string | null;
-  source?: string;
-  preferences?: Record<string, unknown>;
-};
-
-function isFiniteNumber(x: unknown): x is number {
-  return typeof x === 'number' && Number.isFinite(x);
-}
-
-function clampString(v: unknown, maxLen: number): string | null {
-  if (typeof v !== 'string') return null;
-  const t = v.trim();
-  if (!t) return null;
-  return t.length > maxLen ? t.slice(0, maxLen) : t;
-}
-
-function normalizeProductCode(v: unknown): string {
-  if (typeof v !== 'string') return 'standard';
-  const t = v.trim().toLowerCase();
-  return t ? t.slice(0, 32) : 'standard';
-}
-
-function normalizeSource(v: unknown): string {
-  if (typeof v !== 'string') return 'whatsapp';
-  const t = v.trim().toLowerCase();
-  if (t === 'whatsapp' || t === 'callcenter') return t;
-  return 'whatsapp';
-}
-
-function parseOptionalIsoDate(v: unknown): string | null {
-  if (typeof v !== 'string') return null;
-  const t = v.trim();
-  if (!t) return null;
-  const d = new Date(t);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
-}
-
-function validateLatLng(lat: number, lng: number) {
-  if (lat < -90 || lat > 90) throw new Error('Invalid latitude');
-  if (lng < -180 || lng > 180) throw new Error('Invalid longitude');
-}
+import { rideIntentCreateSchema } from '../_shared/schemas.ts';
+import { ZodError } from 'npm:zod@3.23.8';
 
 Deno.serve((req) =>
   withRequestContext('ride-intent-create', req, async (ctx) => {
@@ -84,33 +35,30 @@ Deno.serve((req) =>
       );
     }
 
-    let body: Body;
+    // Parse and validate input with Zod - REJECTS invalid inputs with clear errors
+    let input: ReturnType<typeof rideIntentCreateSchema.parse>;
     try {
-      body = (await req.json()) as Body;
-    } catch {
-      return errorJson('Invalid JSON body', 400, 'INVALID_JSON');
-    }
-
-    if (!isFiniteNumber(body.pickup_lat) || !isFiniteNumber(body.pickup_lng)) {
-      return errorJson('pickup_lat and pickup_lng are required numbers', 400, 'VALIDATION_ERROR');
-    }
-    if (!isFiniteNumber(body.dropoff_lat) || !isFiniteNumber(body.dropoff_lng)) {
-      return errorJson('dropoff_lat and dropoff_lng are required numbers', 400, 'VALIDATION_ERROR');
-    }
-
-    try {
-      validateLatLng(body.pickup_lat, body.pickup_lng);
-      validateLatLng(body.dropoff_lat, body.dropoff_lng);
+      const rawBody = await req.json();
+      input = rideIntentCreateSchema.parse(rawBody);
     } catch (e) {
-      return errorJson(String(e), 400, 'VALIDATION_ERROR');
+      if (e instanceof ZodError) {
+        const firstIssue = e.issues[0];
+        const field = firstIssue?.path.join('.') || 'unknown';
+        const message = firstIssue?.message || 'Validation failed';
+        return errorJson(`${field}: ${message}`, 400, 'VALIDATION_ERROR', { issues: e.issues });
+      }
+      if (e instanceof SyntaxError) {
+        return errorJson('Invalid JSON body', 400, 'INVALID_JSON');
+      }
+      throw e;
     }
 
     const supa = createAnonClient(req);
 
     // Resolve service area from pickup point (Iraq multi-city readiness)
     const { data: area, error: areaErr } = await supa.rpc('resolve_service_area', {
-      p_lat: body.pickup_lat,
-      p_lng: body.pickup_lng,
+      p_lat: input.pickup_lat,
+      p_lng: input.pickup_lng,
     });
     if (areaErr) return errorJson(areaErr.message, 400, 'DB_ERROR');
     const picked = Array.isArray(area) ? area[0] : null;
@@ -120,21 +68,18 @@ Deno.serve((req) =>
 
     const payload = {
       rider_id: user.id,
-      pickup_lat: body.pickup_lat,
-      pickup_lng: body.pickup_lng,
-      dropoff_lat: body.dropoff_lat,
-      dropoff_lng: body.dropoff_lng,
-      pickup_address: clampString(body.pickup_address, 240),
-      dropoff_address: clampString(body.dropoff_address, 240),
+      pickup_lat: input.pickup_lat,
+      pickup_lng: input.pickup_lng,
+      dropoff_lat: input.dropoff_lat,
+      dropoff_lng: input.dropoff_lng,
+      pickup_address: input.pickup_address,
+      dropoff_address: input.dropoff_address,
       service_area_id: picked.id as string,
-      product_code: normalizeProductCode(body.product_code),
-      scheduled_at: parseOptionalIsoDate(body.scheduled_at),
-      source: normalizeSource(body.source),
+      product_code: input.product_code,
+      scheduled_at: input.scheduled_at,
+      source: input.source,
       status: 'new',
-      preferences:
-        body.preferences && typeof body.preferences === 'object' && !Array.isArray(body.preferences)
-          ? body.preferences
-          : {},
+      preferences: input.preferences,
     };
 
     const { data, error } = await supa

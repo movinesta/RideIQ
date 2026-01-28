@@ -2,18 +2,8 @@ import { handleOptions } from '../_shared/cors.ts';
 import { createAnonClient, requireUser } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { withRequestContext } from '../_shared/requestContext.ts';
-
-type Body = {
-  user_id?: string;
-  note?: string;
-};
-
-function isUuid(v: unknown): v is string {
-  return (
-    typeof v === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
-  );
-}
+import { adminUsersGrantSchema } from '../_shared/schemas.ts';
+import { ZodError } from 'npm:zod@3.23.8';
 
 Deno.serve((req) =>
   withRequestContext('admin-users-grant', req, async (ctx) => {
@@ -32,26 +22,44 @@ Deno.serve((req) =>
     const anon = createAnonClient(req);
     const { data: isAdmin, error: adminErr } = await anon.rpc('is_admin');
     if (adminErr) return errorJson(adminErr.message, 400, 'DB_ERROR', undefined, ctx.headers);
-    if (!isAdmin) return errorJson('Forbidden', 403, 'FORBIDDEN', undefined, ctx.headers);
+    if (!isAdmin) {
+      // AUDIT LOG: Failed admin access attempt
+      console.warn(`[AUDIT] DENIED admin-users-grant by user=${user.id} (not admin)`);
+      return errorJson('Forbidden', 403, 'FORBIDDEN', undefined, ctx.headers);
+    }
 
-    let body: Body;
+    // Parse and validate input with Zod
+    let input: ReturnType<typeof adminUsersGrantSchema.parse>;
     try {
-      body = (await req.json()) as Body;
-    } catch {
-      return errorJson('Invalid JSON body', 400, 'INVALID_JSON', undefined, ctx.headers);
+      const rawBody = await req.json();
+      input = adminUsersGrantSchema.parse(rawBody);
+    } catch (e) {
+      if (e instanceof ZodError) {
+        const firstIssue = e.issues[0];
+        const field = firstIssue?.path.join('.') || 'unknown';
+        const message = firstIssue?.message || 'Validation failed';
+        return errorJson(`${field}: ${message}`, 400, 'VALIDATION_ERROR', { issues: e.issues }, ctx.headers);
+      }
+      if (e instanceof SyntaxError) {
+        return errorJson('Invalid JSON body', 400, 'INVALID_JSON', undefined, ctx.headers);
+      }
+      throw e;
     }
 
-    if (!isUuid(body.user_id)) {
-      return errorJson('user_id is required (uuid)', 400, 'VALIDATION_ERROR', undefined, ctx.headers);
-    }
-
-    const note = typeof body.note === 'string' ? body.note.trim().slice(0, 400) : null;
+    // AUDIT LOG: Admin grant attempt
+    console.log(`[AUDIT] admin-users-grant: admin=${user.id} target=${input.user_id} note="${input.note ?? ''}"`);
 
     const { error: grantErr } = await anon.rpc('admin_grant_user', {
-      p_user: body.user_id,
-      p_note: note,
+      p_user: input.user_id,
+      p_note: input.note,
     });
-    if (grantErr) return errorJson(grantErr.message, 400, 'DB_ERROR', undefined, ctx.headers);
+    if (grantErr) {
+      console.error(`[AUDIT] admin-users-grant FAILED: admin=${user.id} target=${input.user_id} error=${grantErr.message}`);
+      return errorJson(grantErr.message, 400, 'DB_ERROR', undefined, ctx.headers);
+    }
+
+    // AUDIT LOG: Success
+    console.log(`[AUDIT] admin-users-grant SUCCESS: admin=${user.id} granted admin to target=${input.user_id}`);
 
     return json({ ok: true }, 200, ctx.headers);
   }),
