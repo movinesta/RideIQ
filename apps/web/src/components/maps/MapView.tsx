@@ -1,5 +1,5 @@
 import React from 'react';
-import { loadGoogleMaps } from '@/lib/googleMaps';
+import { loadGoogleMaps } from '../../lib/googleMaps';
 
 export type LatLng = { lat: number; lng: number };
 
@@ -59,24 +59,30 @@ export function MapView({ center, zoom = 13, markers = [], circles = [], classNa
       }
     })();
 
+    const markers = markersRef.current;
+    const circles = circlesRef.current;
+    const map = mapRef.current;
+    const clickListener = clickListenerRef.current;
+
     return () => {
       cancelled = true;
 
       // Best-effort cleanup
       try {
         const g = (window as any).google;
-        if (g?.maps?.event && mapRef.current) {
-          g.maps.event.clearInstanceListeners(mapRef.current);
+        if (g?.maps?.event && map) {
+          g.maps.event.clearInstanceListeners(map);
         }
       } catch {
         // ignore
       }
 
       mapRef.current = null;
-      markersRef.current.forEach((m) => m?.setMap?.(null));
-      circlesRef.current.forEach((c) => c?.setMap?.(null));
-      markersRef.current.clear();
-      circlesRef.current.clear();
+      markers.forEach((m) => m?.setMap?.(null));
+      circles.forEach((c) => c?.setMap?.(null));
+      markers.clear();
+      circles.clear();
+      if (clickListener?.remove) clickListener.remove();
       clickListenerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -88,7 +94,7 @@ export function MapView({ center, zoom = 13, markers = [], circles = [], classNa
     if (!map) return;
     map.setCenter(center);
     map.setZoom(zoom);
-  }, [center.lat, center.lng, zoom]);
+  }, [center, zoom]);
 
   // Sync markers
   React.useEffect(() => {

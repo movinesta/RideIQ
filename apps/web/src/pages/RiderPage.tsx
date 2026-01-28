@@ -11,7 +11,6 @@ import { buildWhatsAppClickToChatUrl, getWhatsAppBookingNumber } from '../lib/wh
 import SafetyToolkitModal from '../components/SafetyToolkitModal';
 import RideCheckModal from '../components/RideCheckModal';
 import { MapView, type LatLng, type MapMarker, type MapCircle } from '../components/maps/MapView';
-import { loadGoogleMaps } from '../lib/googleMaps';
 
 type RideRequestRow = {
   id: string;
@@ -146,25 +145,77 @@ export default function RiderPage() {
   const [pickupAddress, setPickupAddress] = React.useState('Pickup');
   const [dropoffAddress, setDropoffAddress] = React.useState('Dropoff');
 
-const pickupAddressRef = React.useRef<HTMLInputElement | null>(null);
-const dropoffAddressRef = React.useRef<HTMLInputElement | null>(null);
-const [mapPickMode, setMapPickMode] = React.useState<'pickup' | 'dropoff'>('pickup');
-const [previewRadiusM, setPreviewRadiusM] = React.useState<number>(5000);
+  const pickupAddressRef = React.useRef<HTMLInputElement | null>(null);
+  const dropoffAddressRef = React.useRef<HTMLInputElement | null>(null);
+  const [mapPickMode, setMapPickMode] = React.useState<'pickup' | 'dropoff'>('pickup');
+  const [previewRadiusM, setPreviewRadiusM] = React.useState<number>(5000);
 
-const pickupPos = React.useMemo<LatLng | null>(() => {
-  const lat = Number(pickupLat);
-  const lng = Number(pickupLng);
-  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
-}, [pickupLat, pickupLng]);
+  const pickupPos = React.useMemo<LatLng | null>(() => {
+    const lat = Number(pickupLat);
+    const lng = Number(pickupLng);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }, [pickupLat, pickupLng]);
 
-const dropoffPos = React.useMemo<LatLng | null>(() => {
-  const lat = Number(dropoffLat);
-  const lng = Number(dropoffLng);
-  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
-}, [dropoffLat, dropoffLng]);
+  const dropoffPos = React.useMemo<LatLng | null>(() => {
+    const lat = Number(dropoffLat);
+    const lng = Number(dropoffLng);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }, [dropoffLat, dropoffLng]);
 
-const mapCenter = pickupPos ?? dropoffPos ?? { lat: 33.3152, lng: 44.3661 };
+  const mapCenter = pickupPos ?? dropoffPos ?? { lat: 33.3152, lng: 44.3661 };
 
+  const nearbyDrivers = useQuery({
+    queryKey: ['drivers_nearby', pickupLat, pickupLng, previewRadiusM],
+    enabled: Boolean(pickupPos),
+    queryFn: async () => {
+      if (!pickupPos) return [];
+      const resp = await invokeEdge<{ drivers: Array<any> }>('drivers-nearby', {
+        lat: pickupPos.lat,
+        lng: pickupPos.lng,
+        radius_m: previewRadiusM,
+        stale_seconds: 120,
+      });
+      return resp.data?.drivers ?? [];
+    },
+    staleTime: 5_000,
+  });
+
+  const mapMarkers = React.useMemo<MapMarker[]>(() => {
+    const ms: MapMarker[] = [];
+    if (pickupPos) ms.push({ id: 'pickup', position: pickupPos, label: 'P', title: 'Pickup' });
+    if (dropoffPos) ms.push({ id: 'dropoff', position: dropoffPos, label: 'D', title: 'Dropoff' });
+
+    for (const d of nearbyDrivers.data ?? []) {
+      if (typeof d?.lat === 'number' && typeof d?.lng === 'number') {
+        ms.push({
+          id: `driver:${d.id}`,
+          position: { lat: d.lat, lng: d.lng },
+          label: 'T',
+          title: d.vehicle_type ? `Driver (${d.vehicle_type})` : 'Driver',
+        });
+      }
+    }
+
+    return ms;
+  }, [pickupPos, dropoffPos, nearbyDrivers.data]);
+
+  const mapCircles = React.useMemo<MapCircle[]>(() => {
+    if (!pickupPos) return [];
+    return [{ id: 'pickup-radius', center: pickupPos, radius_m: previewRadiusM }];
+  }, [pickupPos, previewRadiusM]);
+
+  const onMapClick = React.useCallback(
+    (pos: LatLng) => {
+      if (mapPickMode === 'pickup') {
+        setPickupLat(String(pos.lat));
+        setPickupLng(String(pos.lng));
+      } else {
+        setDropoffLat(String(pos.lat));
+        setDropoffLng(String(pos.lng));
+      }
+    },
+    [mapPickMode],
+  );
 
   const [serviceArea, setServiceArea] = React.useState<{ id: string; name: string } | null>(null);
   const [serviceAreaStatus, setServiceAreaStatus] = React.useState<string>('');
@@ -222,58 +273,6 @@ const mapCenter = pickupPos ?? dropoffPos ?? { lat: 33.3152, lng: 44.3661 };
         p_product_code: productCode,
       });
 
-const nearbyDrivers = useQuery({
-  queryKey: ['drivers_nearby', pickupLat, pickupLng, previewRadiusM],
-  enabled: Boolean(pickupPos),
-  queryFn: async () => {
-    if (!pickupPos) return [];
-    const resp = await invokeEdge<{ drivers: Array<any> }>('drivers-nearby', {
-      lat: pickupPos.lat,
-      lng: pickupPos.lng,
-      radius_m: previewRadiusM,
-      stale_seconds: 120,
-    });
-    return resp?.drivers ?? [];
-  },
-  staleTime: 5_000,
-});
-
-const mapMarkers = React.useMemo<MapMarker[]>(() => {
-  const ms: MapMarker[] = [];
-  if (pickupPos) ms.push({ id: 'pickup', position: pickupPos, label: 'P', title: 'Pickup' });
-  if (dropoffPos) ms.push({ id: 'dropoff', position: dropoffPos, label: 'D', title: 'Dropoff' });
-
-  for (const d of nearbyDrivers.data ?? []) {
-    if (typeof d?.lat === 'number' && typeof d?.lng === 'number') {
-      ms.push({
-        id: `driver:${d.id}`,
-        position: { lat: d.lat, lng: d.lng },
-        label: 'T',
-        title: d.vehicle_type ? `Driver (${d.vehicle_type})` : 'Driver',
-      });
-    }
-  }
-
-  return ms;
-}, [pickupPos, dropoffPos, nearbyDrivers.data]);
-
-const mapCircles = React.useMemo<MapCircle[]>(() => {
-  if (!pickupPos) return [];
-  return [{ id: 'pickup-radius', center: pickupPos, radius_m: previewRadiusM }];
-}, [pickupPos, previewRadiusM]);
-
-const onMapClick = React.useCallback(
-  (pos: LatLng) => {
-    if (mapPickMode === 'pickup') {
-      setPickupLat(String(pos.lat));
-      setPickupLng(String(pos.lng));
-    } else {
-      setDropoffLat(String(pos.lat));
-      setDropoffLng(String(pos.lng));
-    }
-  },
-  [mapPickMode],
-);
       if (error) throw error;
       return (data as QuoteBreakdown) ?? null;
     },
