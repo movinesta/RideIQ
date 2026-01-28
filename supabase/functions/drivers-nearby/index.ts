@@ -8,11 +8,7 @@
 
 import { handleOptions } from "../_shared/cors.ts";
 import { errorJson, okJson } from "../_shared/json.ts";
-import {
-  createServiceClient,
-  createSupabaseClient,
-  requireUser,
-} from "../_shared/supabase.ts";
+import { createServiceClient, requireUser } from "../_shared/supabase.ts";
 
 type NearbyDriversBody = {
   pickup_lat: number;
@@ -87,24 +83,26 @@ Deno.serve(async (req) => {
   if (opt) return opt;
 
   if (req.method !== "POST") {
-    return errorJson(405, "Method not allowed", "METHOD_NOT_ALLOWED");
+    return errorJson("Method not allowed", 405, "METHOD_NOT_ALLOWED");
   }
 
   // Auth: require a real user (rider/admin). Preflight is allowed via OPTIONS.
-  const supabase = createSupabaseClient(req);
-  const user = await requireUser(supabase);
+  const { user, error: authError } = await requireUser(req);
+  if (!user) {
+    return errorJson(authError ?? "Unauthorized", 401, "UNAUTHORIZED");
+  }
 
   let body: NearbyDriversBody;
   try {
     body = await req.json();
   } catch {
-    return errorJson(400, "Invalid JSON body", "BAD_REQUEST");
+    return errorJson("Invalid JSON body", 400, "BAD_REQUEST");
   }
 
   const pickup_lat = toNumber(body?.pickup_lat);
   const pickup_lng = toNumber(body?.pickup_lng);
   if (pickup_lat === null || pickup_lng === null) {
-    return errorJson(400, "pickup_lat/pickup_lng are required", "BAD_REQUEST");
+    return errorJson("pickup_lat/pickup_lng are required", 400, "BAD_REQUEST");
   }
 
   const radius_m = clamp(toNumber(body?.radius_m) ?? 5000, 100, 50000);
@@ -130,7 +128,7 @@ Deno.serve(async (req) => {
       .select("driver_id")
       .in("status", ["assigned", "arrived", "in_progress"]);
     if (error) {
-      return errorJson(500, `Failed to load rides: ${error.message}`, "DB_ERROR");
+      return errorJson(`Failed to load rides: ${error.message}`, 500, "DB_ERROR");
     }
     for (const r of data ?? []) {
       if (r?.driver_id) busy.add(String(r.driver_id));
@@ -150,8 +148,8 @@ Deno.serve(async (req) => {
 
   if (locErr) {
     return errorJson(
-      500,
       `Failed to load driver locations: ${locErr.message}`,
+      500,
       "DB_ERROR",
     );
   }
