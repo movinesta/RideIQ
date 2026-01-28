@@ -92,9 +92,27 @@ async function fetchJson(url: string, init: RequestInit): Promise<FetchJsonOut> 
   return { status: res.status, ok: res.ok, url: res.url, contentType, data };
 }
 
+function isUuidDashed(v: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+function normalizeUuid(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  const t = v.trim();
+  if (!t) return '';
+  if (isUuidDashed(t)) return t;
+
+  // Some gateways return UUIDs without dashes (32 hex chars). Normalize to dashed form.
+  if (/^[0-9a-f]{32}$/i.test(t)) {
+    return `${t.slice(0, 8)}-${t.slice(8, 12)}-${t.slice(12, 16)}-${t.slice(16, 20)}-${t.slice(20)}`;
+  }
+
+  return '';
+}
+
 function isUuid(v: unknown): v is string {
-  return typeof v === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  // Type guard: true if the value is a UUID (dashed or 32-hex). Use normalizeUuid() to get canonical form.
+  return !!normalizeUuid(v);
 }
 
 function isHttpUrl(v: unknown): v is string {
@@ -102,22 +120,34 @@ function isHttpUrl(v: unknown): v is string {
 }
 
 function extractUuidFromText(text: string): string {
-  const m = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
-  return m ? m[0] : '';
+  if (!text) return '';
+
+  // Try dashed UUID first.
+  const dashed = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+  if (dashed && dashed[0]) return normalizeUuid(dashed[0]);
+
+  // Fallback: 32-hex UUID without dashes.
+  const nodash = text.match(/[0-9a-f]{32}/i);
+  if (nodash && nodash[0]) return normalizeUuid(nodash[0]);
+
+  return '';
 }
+
 
 function extractTransactionIdFromRedirectUrl(redirectUrl: string): string {
   // ZainCash sometimes encodes the transaction id into the redirectUrl itself.
-  // We only accept UUIDs (per the v2 docs).
+  // Accept UUIDs with dashes or 32-hex and normalize to dashed form.
   const fromText = extractUuidFromText(redirectUrl);
-  if (isUuid(fromText)) return fromText;
+  const normalized = normalizeUuid(fromText);
+  if (normalized) return normalized;
 
   try {
     const u = new URL(redirectUrl);
     const candidates = ['transactionId', 'transaction_id', 'txId', 'tx_id', 'id'];
     for (const key of candidates) {
       const v = u.searchParams.get(key);
-      if (v && isUuid(v)) return v;
+      const n = normalizeUuid(v);
+      if (n) return n;
     }
   } catch {
     // ignore
@@ -166,19 +196,33 @@ function summarizeInitBody(data: any): string {
   const msg = d.message ?? d.error ?? d.error_description ?? d.description ?? d.details ?? null;
   const code = d.code ?? d.errorCode ?? d.error_code ?? d.statusCode ?? null;
   const status = d.status ?? d.result ?? d.responseStatus ?? null;
+  const redirectError = d.redirectError ?? d.redirect_error ?? null;
+  const errFlag = d.err ?? null;
   const keys = Object.keys(d).slice(0, 18).join(',');
 
   // If safeJsonParse fell back to {raw: ...}, surface that.
   const raw = typeof d.raw === 'string' ? d.raw.slice(0, 200) : null;
+
+  const redErrStr =
+    redirectError != null && String(redirectError).trim() !== ''
+      ? `redirectError=${String(redirectError).slice(0, 200)}`
+      : null;
+  const errStr =
+    errFlag != null && String(errFlag).trim() !== '' ? `err=${String(errFlag).slice(0, 60)}` : null;
 
   return [
     keys ? `keys=[${keys}]` : null,
     status != null ? `status=${String(status)}` : null,
     code != null ? `code=${String(code)}` : null,
     msg != null ? `message=${String(msg).slice(0, 200)}` : null,
+    redErrStr,
+    errStr,
     raw ? `raw=${raw}` : null,
-  ].filter(Boolean).join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
+
 
 async function getAccessToken(cfg: ZaincashV2Config): Promise<string> {
   const url = cfg.baseUrl + ZAINCASH_OAUTH_PATH;
@@ -283,7 +327,7 @@ export async function zaincashV2InitPayment(
     raw?.data?.paymentUrl ??
     raw?.data?.payment_url;
 
-  let transactionId = isUuid(knownTransactionId) ? knownTransactionId : '';
+  let transactionId = normalizeUuid(knownTransactionId);
   let redirectUrl = isHttpUrl(knownRedirectUrl) ? knownRedirectUrl : '';
 
   // Second: robust deep extraction (handles additional wrapper objects)
@@ -293,7 +337,7 @@ export async function zaincashV2InitPayment(
       const nk = normKey(k);
       return nk.includes('transaction') && nk.includes('id');
     });
-    if (foundTx && isUuid(foundTx.value)) transactionId = foundTx.value;
+    if (foundTx) transactionId = normalizeUuid(foundTx.value);
   }
 
   if (!redirectUrl) {
@@ -310,15 +354,28 @@ export async function zaincashV2InitPayment(
   // we're simply making the integration tolerant to provider response shape changes.
   if (!transactionId && redirectUrl) {
     const extracted = extractTransactionIdFromRedirectUrl(redirectUrl);
-    if (isUuid(extracted)) transactionId = extracted;
+    transactionId = normalizeUuid(extracted) || transactionId;
   }
 
-  // If provider signals an error explicitly, surface it even if redirectUrl exists.
-  const providerErr =
-    (typeof (raw as any)?.err === 'string' && String((raw as any).err).trim()) ||
-    (typeof (raw as any)?.redirectError === 'string' && String((raw as any).redirectError).trim()) ||
-    (typeof (raw as any)?.message === 'string' && String((raw as any).message).trim()) ||
-    (typeof (raw as any)?.error === 'string' && String((raw as any).error).trim());
+  
+// If provider signals an error explicitly, surface it even if redirectUrl exists.
+// Note: some responses return err as a number/boolean and redirectError as an object.
+  const providerErrVal =
+    (raw as any)?.redirectError ??
+    (raw as any)?.redirect_error ??
+    (raw as any)?.err ??
+    (raw as any)?.error ??
+    (raw as any)?.message;
+
+  const providerErr = (() => {
+    if (providerErrVal == null) return '';
+    const asStr = typeof providerErrVal === 'string' ? providerErrVal : safeStringify(providerErrVal, 400);
+    const t = String(asStr).trim();
+    // Common "no error" values.
+    if (!t || t === '0' || t.toLowerCase() === 'false' || t.toLowerCase() === 'ok') return '';
+    return t;
+  })();
+
   if (providerErr && (!transactionId || !redirectUrl)) {
     const details = summarizeInitBody(raw);
     const err: any = new Error(`ZainCash init error: ${providerErr}. ${details || ''}`.trim());
