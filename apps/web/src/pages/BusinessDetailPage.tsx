@@ -13,12 +13,15 @@ export default function BusinessDetailPage() {
   const nav = useNavigate();
 
   const [cartVersion, setCartVersion] = React.useState(0);
-const [q, setQ] = React.useState('');
-const [category, setCategory] = React.useState('');
-const [sort, setSort] = React.useState<ProductSort>('featured');
-const [featuredOnly, setFeaturedOnly] = React.useState(false);
+  const [q, setQ] = React.useState('');
+  const [category, setCategory] = React.useState('');
+  const [sort, setSort] = React.useState<ProductSort>('featured');
+  const [featuredOnly, setFeaturedOnly] = React.useState(false);
+  const [count, setCount] = React.useState(() => cartCount(merchantId));
 
-  const count = React.useMemo(() => cartCount(merchantId), [merchantId, cartVersion]);
+  React.useEffect(() => {
+    setCount(cartCount(merchantId));
+  }, [merchantId, cartVersion]);
 
   const merchantQ = useQuery({
     queryKey: ['merchant', merchantId],
@@ -32,19 +35,19 @@ const [featuredOnly, setFeaturedOnly] = React.useState(false);
     enabled: Boolean(merchantId),
   });
 
-const productsQ = useInfiniteQuery({
-  queryKey: ['merchant-products', merchantId, q, category, sort, featuredOnly],
-  queryFn: ({ pageParam }) =>
-    listMerchantProductsPaged(merchantId, false, (pageParam as number) ?? 0, PAGE_SIZE, {
-      q,
-      category: category || null,
-      featuredOnly,
-      sort,
-    }),
-  initialPageParam: 0,
-  getNextPageParam: (last, all) => (last.hasMore ? all.length : undefined),
-  enabled: Boolean(merchantId),
-});
+  const productsQ = useInfiniteQuery({
+    queryKey: ['merchant-products', merchantId, q, category, sort, featuredOnly],
+    queryFn: ({ pageParam }) =>
+      listMerchantProductsPaged(merchantId, false, (pageParam as number) ?? 0, PAGE_SIZE, {
+        q,
+        category: category || null,
+        featuredOnly,
+        sort,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (last, all) => (last.hasMore ? all.length : undefined),
+    enabled: Boolean(merchantId),
+  });
 
 
   const promosQ = useQuery({
@@ -61,31 +64,31 @@ const productsQ = useInfiniteQuery({
     return (promosQ.data ?? []).filter((p: MerchantPromotion) => isPromotionActive(p, now));
   }, [promosQ.data]);
 
-const promoBuckets = React.useMemo(() => {
-  const byProduct = new Map<string, MerchantPromotion[]>();
-  const byCategory = new Map<string, MerchantPromotion[]>();
-  const merchantWide: MerchantPromotion[] = [];
-  for (const p of activePromos) {
-    if (p.product_id) {
-      const arr = byProduct.get(p.product_id) ?? [];
-      arr.push(p);
-      byProduct.set(p.product_id, arr);
-    } else if ((p as any).category) {
-      const c = ((p as any).category ?? '').toString().trim();
-      if (c) {
-        const key = c.toLowerCase();
-        const arr = byCategory.get(key) ?? [];
+  const promoBuckets = React.useMemo(() => {
+    const byProduct = new Map<string, MerchantPromotion[]>();
+    const byCategory = new Map<string, MerchantPromotion[]>();
+    const merchantWide: MerchantPromotion[] = [];
+    for (const p of activePromos) {
+      if (p.product_id) {
+        const arr = byProduct.get(p.product_id) ?? [];
         arr.push(p);
-        byCategory.set(key, arr);
+        byProduct.set(p.product_id, arr);
+      } else if ((p as any).category) {
+        const c = ((p as any).category ?? '').toString().trim();
+        if (c) {
+          const key = c.toLowerCase();
+          const arr = byCategory.get(key) ?? [];
+          arr.push(p);
+          byCategory.set(key, arr);
+        } else {
+          merchantWide.push(p);
+        }
       } else {
         merchantWide.push(p);
       }
-    } else {
-      merchantWide.push(p);
     }
-  }
-  return { byProduct, byCategory, merchantWide };
-}, [activePromos]);
+    return { byProduct, byCategory, merchantWide };
+  }, [activePromos]);
 
   function computeEffectivePrice(price: number, promo: MerchantPromotion | null): { final: number; label: string | null } {
     if (!promo) return { final: price, label: null };
@@ -101,27 +104,27 @@ const promoBuckets = React.useMemo(() => {
     return { final, label: `خصم ${off} د.ع` };
   }
 
-function pickBestPromo(productId: string, price: number, productCategory?: string | null): MerchantPromotion | null {
-  const catKey = (productCategory ?? '').toString().trim().toLowerCase();
-  const candidates = [
-    ...(promoBuckets.byProduct.get(productId) ?? []),
-    ...(catKey ? (promoBuckets.byCategory.get(catKey) ?? []) : []),
-    ...promoBuckets.merchantWide,
-  ];
-  if (candidates.length === 0) return null;
-  // Choose the promo that yields the maximum savings
-  let best: MerchantPromotion | null = null;
-  let bestSavings = -1;
-  for (const p of candidates) {
-    const { final } = computeEffectivePrice(price, p);
-    const savings = price - final;
-    if (savings > bestSavings) {
-      bestSavings = savings;
-      best = p;
+  function pickBestPromo(productId: string, price: number, productCategory?: string | null): MerchantPromotion | null {
+    const catKey = (productCategory ?? '').toString().trim().toLowerCase();
+    const candidates = [
+      ...(promoBuckets.byProduct.get(productId) ?? []),
+      ...(catKey ? (promoBuckets.byCategory.get(catKey) ?? []) : []),
+      ...promoBuckets.merchantWide,
+    ];
+    if (candidates.length === 0) return null;
+    // Choose the promo that yields the maximum savings
+    let best: MerchantPromotion | null = null;
+    let bestSavings = -1;
+    for (const p of candidates) {
+      const { final } = computeEffectivePrice(price, p);
+      const savings = price - final;
+      if (savings > bestSavings) {
+        bestSavings = savings;
+        best = p;
+      }
     }
+    return best;
   }
-  return best;
-}
 
   async function onChat() {
     const threadId = await merchantChatGetOrCreateThread(merchantId);
@@ -158,32 +161,32 @@ function pickBestPromo(productId: string, price: number, productCategory?: strin
 
       <div className="border rounded p-3">
         <div className="font-medium mb-2">Products</div>
-<div className="grid gap-2 md:grid-cols-4 mb-3">
-  <input
-    className="border rounded px-3 py-2 md:col-span-2"
-    placeholder="Search…"
-    value={q}
-    onChange={(e) => setQ(e.target.value)}
-  />
-  <select className="border rounded px-3 py-2" value={category} onChange={(e) => setCategory(e.target.value)}>
-    <option value="">All categories</option>
-    {(categoriesQ.data ?? []).map((c) => (
-      <option key={c} value={c}>
-        {c}
-      </option>
-    ))}
-  </select>
-  <select className="border rounded px-3 py-2" value={sort} onChange={(e) => setSort(e.target.value as any)}>
-    <option value="featured">Featured</option>
-    <option value="newest">Newest</option>
-    <option value="price_asc">Price ↑</option>
-    <option value="price_desc">Price ↓</option>
-  </select>
-  <label className="flex items-center gap-2 text-sm md:col-span-4">
-    <input type="checkbox" checked={featuredOnly} onChange={(e) => setFeaturedOnly(e.target.checked)} />
-    Featured only
-  </label>
-</div>
+        <div className="grid gap-2 md:grid-cols-4 mb-3">
+          <input
+            className="border rounded px-3 py-2 md:col-span-2"
+            placeholder="Search…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <select className="border rounded px-3 py-2" value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">All categories</option>
+            {(categoriesQ.data ?? []).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <select className="border rounded px-3 py-2" value={sort} onChange={(e) => setSort(e.target.value as ProductSort)}>
+            <option value="featured">Featured</option>
+            <option value="newest">Newest</option>
+            <option value="price_asc">Price ↑</option>
+            <option value="price_desc">Price ↓</option>
+          </select>
+          <label className="flex items-center gap-2 text-sm md:col-span-4">
+            <input type="checkbox" checked={featuredOnly} onChange={(e) => setFeaturedOnly(e.target.checked)} />
+            Featured only
+          </label>
+        </div>
 
         {productsQ.isLoading && <div className="text-sm text-gray-500">Loading products…</div>}
         {productsQ.error && <div className="text-sm text-red-600">Failed to load products.</div>}
