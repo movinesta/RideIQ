@@ -26,6 +26,47 @@ function pickFirstString(obj: any, keys: string[]): string {
   }
   return '';
 }
+/**
+ * Extracts the redirect JWT token from the request URL.
+ *
+ * ZainCash redirects back to the provided successUrl / failureUrl with a JWT token
+ * in the URL query string. In the wild, some gateways will append `?token=...` even
+ * if the provided URL already contained query params, causing the token to end up
+ * embedded inside another parameter value (e.g. `result=success?token=...`).
+ *
+ * We support both:
+ *   - `?token=<JWT>`
+ *   - `?result=success?token=<JWT>` (token embedded in another param)
+ */
+function extractRedirectToken(url: URL): string {
+  const direct = String(url.searchParams.get('token') ?? url.searchParams.get('jwt') ?? '').trim();
+  if (direct) return direct;
+
+  const embeddedCandidates = [
+    url.searchParams.get('result'),
+    url.searchParams.get('status'),
+    url.searchParams.get('redirect'),
+  ].filter(Boolean) as string[];
+
+  for (const c of embeddedCandidates) {
+    const v = String(c);
+    // token embedded as `...token=<JWT>` or `...?token=<JWT>`
+    const m = v.match(/(?:\?|&|^)token=([^&]+)/i);
+    if (m?.[1]) return String(m[1]).trim();
+
+    // sometimes the embedded token is still percent-encoded
+    const m2 = v.match(/token%3D([^&]+)/i);
+    if (m2?.[1]) return decodeURIComponent(m2[1]).trim();
+  }
+
+  // last resort: scan the raw query string for token (handles `%3Ftoken%3D...`)
+  const raw = url.search ?? '';
+  const m3 = raw.match(/(?:\?|&|%3F)token(?:=|%3D)([^&]+)/i);
+  if (m3?.[1]) return decodeURIComponent(m3[1]).trim();
+
+  return '';
+}
+
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -35,9 +76,9 @@ Deno.serve(async (req) => {
     if (req.method !== 'GET') return errorJson('Method not allowed', 405);
 
     const url = new URL(req.url);
-    const token = String(url.searchParams.get('token') ?? url.searchParams.get('jwt') ?? '').trim();
+    const token = extractRedirectToken(url);
     const intentIdQ = String(url.searchParams.get('intentId') ?? '').trim();
-    const resultHint = String(url.searchParams.get('result') ?? '').trim().toLowerCase();
+    const resultHint = String(url.searchParams.get('result') ?? '').trim().split('?')[0].toLowerCase();
 
     if (!token) return errorJson('Missing token', 400, 'VALIDATION_ERROR');
 

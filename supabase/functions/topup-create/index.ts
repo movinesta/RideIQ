@@ -145,15 +145,18 @@ Deno.serve(async (req) => {
         const msg = e instanceof Error ? e.message : String(e);
         return errorJson(`ZainCash v2 is not configured: ${msg}`, 500, 'MISCONFIGURED');
       }
-
       const base = SUPABASE_URL.replace(/\/$/, '');
-      const successUrl = new URL(`${base}/functions/v1/zaincash-return`);
-      successUrl.searchParams.set('intentId', intentId);
-      successUrl.searchParams.set('result', 'success');
 
-      const failureUrl = new URL(`${base}/functions/v1/zaincash-return`);
-      failureUrl.searchParams.set('intentId', intentId);
-      failureUrl.searchParams.set('result', 'failure');
+      // IMPORTANT:
+      // ZainCash redirects back to successUrl/failureUrl by appending a `token` query parameter.
+      // Some gateways append `?token=...` even if the provided URL already has query params,
+      // which can break parsing and cause "Missing token" errors.
+      // To be robust, we keep the return URLs free of our own query parameters and derive
+      // intentId + status from the signed token (and/or inquiry) in `zaincash-return`.
+      const returnUrl = `${base}/functions/v1/zaincash-return`;
+      const successUrl = returnUrl;
+      const failureUrl = returnUrl;
+
 
 
       const initPayload = {
