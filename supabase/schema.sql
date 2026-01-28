@@ -9004,6 +9004,7 @@ CREATE TABLE public.driver_locations (
     speed_mps numeric,
     accuracy_m numeric,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    vehicle_type text,
     CONSTRAINT driver_locations_lat_check CHECK (((lat >= ('-90'::integer)::double precision) AND (lat <= (90)::double precision))),
     CONSTRAINT driver_locations_lng_check CHECK (((lng >= ('-180'::integer)::double precision) AND (lng <= (180)::double precision)))
 );
