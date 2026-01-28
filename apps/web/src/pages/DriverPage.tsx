@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { MapView, type LatLng, type MapMarker } from '../components/maps/MapView';
 import { FunctionsHttpError, type RealtimeChannel } from '@supabase/supabase-js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -50,6 +51,10 @@ type RideRequestRow = {
   created_at: string;
   matched_at: string | null;
   match_deadline: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  dropoff_lat?: number | null;
+  dropoff_lng?: number | null;
 };
 
 type RideRow = {
@@ -132,7 +137,7 @@ async function fetchAssignedRequests(): Promise<RideRequestRow[]> {
   const uid = await getUid();
   const { data, error } = await supabase
     .from('ride_requests')
-    .select('id,status,pickup_address,dropoff_address,created_at,matched_at,match_deadline')
+    .select('id,status,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,created_at,matched_at,match_deadline')
     .eq('assigned_driver_id', uid)
     .eq('status', 'matched')
     .order('created_at', { ascending: false });
@@ -222,6 +227,39 @@ export default function DriverPage() {
   const kyc = useQuery({ queryKey: ['profile_kyc'], queryFn: fetchProfileKyc, enabled: !!driver.data });
   const vehicle = useQuery({ queryKey: ['driver_vehicle'], queryFn: fetchVehicle, enabled: !!driver.data });
   const assigned = useQuery({ queryKey: ['assigned_requests'], queryFn: fetchAssignedRequests, enabled: !!driver.data });
+
+const driverPos = React.useMemo<LatLng | null>(() => {
+  if (typeof geo.lat !== 'number' || typeof geo.lng !== 'number') return null;
+  if (!Number.isFinite(geo.lat) || !Number.isFinite(geo.lng)) return null;
+  return { lat: geo.lat, lng: geo.lng };
+}, [geo.lat, geo.lng]);
+
+const activeRequest = React.useMemo<RideRequestRow | null>(() => {
+  const arr = assigned.data ?? [];
+  return arr.length ? arr[0] : null;
+}, [assigned.data]);
+
+const pickupPos = React.useMemo<LatLng | null>(() => {
+  const lat = Number(activeRequest?.pickup_lat);
+  const lng = Number(activeRequest?.pickup_lng);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}, [activeRequest?.pickup_lat, activeRequest?.pickup_lng]);
+
+const dropoffPos = React.useMemo<LatLng | null>(() => {
+  const lat = Number(activeRequest?.dropoff_lat);
+  const lng = Number(activeRequest?.dropoff_lng);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}, [activeRequest?.dropoff_lat, activeRequest?.dropoff_lng]);
+
+const driverMapCenter = driverPos ?? pickupPos ?? dropoffPos ?? { lat: 33.3152, lng: 44.3661 };
+
+const driverMapMarkers = React.useMemo<MapMarker[]>(() => {
+  const ms: MapMarker[] = [];
+  if (driverPos) ms.push({ id: 'driver', position: driverPos, label: 'You', title: 'Your location' });
+  if (pickupPos) ms.push({ id: 'pickup', position: pickupPos, label: 'P', title: 'Pickup' });
+  if (dropoffPos) ms.push({ id: 'dropoff', position: dropoffPos, label: 'D', title: 'Dropoff' });
+  return ms;
+}, [driverPos, pickupPos, dropoffPos]);
   const rides = useQuery({ queryKey: ['rides_driver'], queryFn: fetchRides, enabled: !!driver.data });
 
   const activeRide = React.useMemo(() => {
@@ -629,6 +667,28 @@ export default function DriverPage() {
 
         {driver.data && (
           <div className="mt-4 space-y-4">
+
+<div className="rounded-md border bg-white p-3">
+  <div className="flex items-center justify-between gap-3">
+    <div>
+      <div className="text-sm font-semibold">Live map</div>
+      <div className="text-xs text-gray-500">Shows your GPS location and (when assigned) pickup/dropoff markers.</div>
+    </div>
+    <div className="text-xs text-gray-500">
+      {activeRequest ? `Active request: ${activeRequest.id}` : 'No active request'}
+    </div>
+  </div>
+
+  <div className="mt-3">
+    <MapView
+      className="h-[360px] w-full overflow-hidden rounded-md"
+      center={driverMapCenter}
+      zoom={driverPos ? 14 : 12}
+      markers={driverMapMarkers}
+    />
+  </div>
+</div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="rounded-md border bg-white p-3">
                 <div className="text-xs text-gray-500">KYC status</div>

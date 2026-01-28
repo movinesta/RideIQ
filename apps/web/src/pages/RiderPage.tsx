@@ -10,6 +10,8 @@ import { invokeEdge } from '../lib/edgeInvoke';
 import { buildWhatsAppClickToChatUrl, getWhatsAppBookingNumber } from '../lib/whatsapp';
 import SafetyToolkitModal from '../components/SafetyToolkitModal';
 import RideCheckModal from '../components/RideCheckModal';
+import { MapView, type LatLng, type MapMarker, type MapCircle } from '../components/maps/MapView';
+import { loadGoogleMaps } from '../lib/googleMaps';
 
 type RideRequestRow = {
   id: string;
@@ -144,6 +146,26 @@ export default function RiderPage() {
   const [pickupAddress, setPickupAddress] = React.useState('Pickup');
   const [dropoffAddress, setDropoffAddress] = React.useState('Dropoff');
 
+const pickupAddressRef = React.useRef<HTMLInputElement | null>(null);
+const dropoffAddressRef = React.useRef<HTMLInputElement | null>(null);
+const [mapPickMode, setMapPickMode] = React.useState<'pickup' | 'dropoff'>('pickup');
+const [previewRadiusM, setPreviewRadiusM] = React.useState<number>(5000);
+
+const pickupPos = React.useMemo<LatLng | null>(() => {
+  const lat = Number(pickupLat);
+  const lng = Number(pickupLng);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}, [pickupLat, pickupLng]);
+
+const dropoffPos = React.useMemo<LatLng | null>(() => {
+  const lat = Number(dropoffLat);
+  const lng = Number(dropoffLng);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}, [dropoffLat, dropoffLng]);
+
+const mapCenter = pickupPos ?? dropoffPos ?? { lat: 33.3152, lng: 44.3661 };
+
+
   const [serviceArea, setServiceArea] = React.useState<{ id: string; name: string } | null>(null);
   const [serviceAreaStatus, setServiceAreaStatus] = React.useState<string>('');
 
@@ -199,6 +221,59 @@ export default function RiderPage() {
         p_dropoff_lng: dg,
         p_product_code: productCode,
       });
+
+const nearbyDrivers = useQuery({
+  queryKey: ['drivers_nearby', pickupLat, pickupLng, previewRadiusM],
+  enabled: Boolean(pickupPos),
+  queryFn: async () => {
+    if (!pickupPos) return [];
+    const resp = await invokeEdge<{ drivers: Array<any> }>('drivers-nearby', {
+      lat: pickupPos.lat,
+      lng: pickupPos.lng,
+      radius_m: previewRadiusM,
+      stale_seconds: 120,
+    });
+    return resp?.drivers ?? [];
+  },
+  staleTime: 5_000,
+});
+
+const mapMarkers = React.useMemo<MapMarker[]>(() => {
+  const ms: MapMarker[] = [];
+  if (pickupPos) ms.push({ id: 'pickup', position: pickupPos, label: 'P', title: 'Pickup' });
+  if (dropoffPos) ms.push({ id: 'dropoff', position: dropoffPos, label: 'D', title: 'Dropoff' });
+
+  for (const d of nearbyDrivers.data ?? []) {
+    if (typeof d?.lat === 'number' && typeof d?.lng === 'number') {
+      ms.push({
+        id: `driver:${d.id}`,
+        position: { lat: d.lat, lng: d.lng },
+        label: 'T',
+        title: d.vehicle_type ? `Driver (${d.vehicle_type})` : 'Driver',
+      });
+    }
+  }
+
+  return ms;
+}, [pickupPos, dropoffPos, nearbyDrivers.data]);
+
+const mapCircles = React.useMemo<MapCircle[]>(() => {
+  if (!pickupPos) return [];
+  return [{ id: 'pickup-radius', center: pickupPos, radius_m: previewRadiusM }];
+}, [pickupPos, previewRadiusM]);
+
+const onMapClick = React.useCallback(
+  (pos: LatLng) => {
+    if (mapPickMode === 'pickup') {
+      setPickupLat(String(pos.lat));
+      setPickupLng(String(pos.lng));
+    } else {
+      setDropoffLat(String(pos.lat));
+      setDropoffLng(String(pos.lng));
+    }
+  },
+  [mapPickMode],
+);
       if (error) throw error;
       return (data as QuoteBreakdown) ?? null;
     },
@@ -339,15 +414,68 @@ export default function RiderPage() {
         </div>
 
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Pickup address" value={pickupAddress} onChange={setPickupAddress} />
-          <Field label="Dropoff address" value={dropoffAddress} onChange={setDropoffAddress} />
+          <Field label="Pickup address" value={pickupAddress} onChange={setPickupAddress} inputRef={pickupAddressRef} placeholder="Search pickup on map" />
+          <Field label="Dropoff address" value={dropoffAddress} onChange={setDropoffAddress} inputRef={dropoffAddressRef} placeholder="Search dropoff on map" />
 
-          <Field label="Pickup lat" value={pickupLat} onChange={setPickupLat} />
-          <Field label="Pickup lng" value={pickupLng} onChange={setPickupLng} />
+          <Field label="Pickup lat" value={pickupLat} onChange={setPickupLat} type="number" step="0.000001" />
+          <Field label="Pickup lng" value={pickupLng} onChange={setPickupLng} type="number" step="0.000001" />
 
-          <Field label="Dropoff lat" value={dropoffLat} onChange={setDropoffLat} />
-          <Field label="Dropoff lng" value={dropoffLng} onChange={setDropoffLng} />
+          <Field label="Dropoff lat" value={dropoffLat} onChange={setDropoffLat} type="number" step="0.000001" />
+          <Field label="Dropoff lng" value={dropoffLng} onChange={setDropoffLng} type="number" step="0.000001" />
         </div>
+
+<div className="mt-5 rounded-2xl border border-gray-200 bg-white p-3">
+  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <div className="text-sm font-semibold">Map</div>
+      <div className="text-xs text-gray-500">
+        Click the map to set the <span className="font-medium">{mapPickMode}</span> location.
+      </div>
+    </div>
+
+    <div className="flex flex-wrap items-center gap-2">
+      <label className="text-xs text-gray-600">Set</label>
+      <select
+        className="input w-36"
+        value={mapPickMode}
+        onChange={(e) => setMapPickMode(e.target.value as 'pickup' | 'dropoff')}
+      >
+        <option value="pickup">Pickup</option>
+        <option value="dropoff">Dropoff</option>
+      </select>
+
+      <label className="text-xs text-gray-600">Radius (m)</label>
+      <input
+        className="input w-32"
+        type="number"
+        min={100}
+        step={50}
+        value={previewRadiusM}
+        onChange={(e) => setPreviewRadiusM(Math.max(100, Number(e.target.value) || 0))}
+      />
+
+      <button className="btn" type="button" disabled={!pickupPos || nearbyDrivers.isFetching} onClick={() => nearbyDrivers.refetch()}>
+        Refresh drivers
+      </button>
+    </div>
+  </div>
+
+  <div className="mt-3">
+    <MapView
+      className="h-[360px] w-full overflow-hidden rounded-2xl"
+      center={mapCenter}
+      zoom={pickupPos ? 14 : 12}
+      markers={mapMarkers}
+      circles={mapCircles}
+      onMapClick={onMapClick}
+    />
+  </div>
+
+  <div className="mt-2 text-xs text-gray-600">
+    Nearby drivers: <span className="font-medium">{nearbyDrivers.data?.length ?? 0}</span>
+    {nearbyDrivers.isFetching ? ' (refreshing...)' : ''}
+  </div>
+</div>
 
         {serviceAreaStatus ? (
           <div className={`mt-3 text-sm ${serviceArea ? 'text-emerald-700' : 'text-rose-700'}`}>{serviceAreaStatus}</div>
@@ -604,7 +732,7 @@ export default function RiderPage() {
                     setBusy(true);
                     setToast(null);
                     try {
-					  const { data } = await invokeEdge<unknown>('match-ride', { request_id: rr.id, radius_m: 5000, limit_n: 20 });
+					  const { data } = await invokeEdge<unknown>('match-ride', { request_id: rr.id, radius_m: previewRadiusM, limit_n: 20 });
                       setToast(`Match result: ${JSON.stringify(data)}`);
                       qc.invalidateQueries({ queryKey: ['ride_requests'] });
                     } catch (e: unknown) {
@@ -769,11 +897,36 @@ export default function RiderPage() {
   );
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+
+function Field({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  step,
+  placeholder,
+  inputRef,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: 'text' | 'number';
+  step?: string;
+  placeholder?: string;
+  inputRef?: React.Ref<HTMLInputElement>;
+}) {
   return (
     <div>
       <div className="label">{label}</div>
-      <input className="input" value={value} onChange={(e) => onChange(e.target.value)} />
+      <input
+        ref={inputRef}
+        className="input"
+        type={type}
+        step={step}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </div>
   );
 }
