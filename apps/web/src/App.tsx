@@ -53,7 +53,10 @@ function RoleGate({ children }: { children: React.ReactNode }) {
   if (q.isLoading) return <div className="p-6">Loading…</div>;
   if (q.isError) return <div className="p-6">Failed to load profile.</div>;
 
-  const completed = q.data.role_onboarding_completed;
+  const ctx = q.data;
+  if (!ctx) return <div className="p-6">Failed to load profile.</div>;
+
+  const completed = ctx.role_onboarding_completed;
   const isOnboardingRoute = loc.pathname.startsWith('/onboarding');
 
   if (!completed && !isOnboardingRoute) {

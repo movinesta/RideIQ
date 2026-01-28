@@ -315,6 +315,13 @@ export default function DriverPage() {
     accuracyM: null,
     error: null,
   });
+  const [baseVehicle, setBaseVehicle] = React.useState<'car' | 'motorcycle' | 'cargo'>('car');
+  const [carCategory, setCarCategory] = React.useState<'private' | 'taxi'>('private');
+  const vehicleType = React.useMemo(() => {
+    if (baseVehicle === 'car') return carCategory === 'taxi' ? 'car_taxi' : 'car_private';
+    if (baseVehicle === 'motorcycle') return 'motorcycle';
+    return 'cargo';
+  }, [baseVehicle, carCategory]);
 
   // Location tracking (throttled)
   React.useEffect(() => {
@@ -383,7 +390,7 @@ export default function DriverPage() {
       stopped = true;
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     };
-  }, [geo.tracking]);
+  }, [geo.tracking, vehicleType]);
 
   const status = driver.data?.status ?? null;
   const kycStatus = kyc.data?.status ?? 'unverified';
@@ -491,13 +498,6 @@ export default function DriverPage() {
     }
   };
 
-  const [baseVehicle, setBaseVehicle] = React.useState<'car' | 'motorcycle' | 'cargo'>('car');
-  const [carCategory, setCarCategory] = React.useState<'private' | 'taxi'>('private');
-  const vehicleType = React.useMemo(() => {
-    if (baseVehicle === 'car') return carCategory === 'taxi' ? 'car_taxi' : 'car_private';
-    if (baseVehicle === 'motorcycle') return 'motorcycle';
-    return 'cargo';
-  }, [baseVehicle, carCategory]);
   const [make, setMake] = React.useState('');
   const [model, setModel] = React.useState('');
   const [color, setColor] = React.useState('');

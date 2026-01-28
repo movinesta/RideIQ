@@ -73,6 +73,7 @@ export type Database = {
           loc: string | null;
           speed_mps: number | null;
           updated_at: string;
+      vehicle_type: string | null;
         };
         Insert: {
           accuracy_m?: number | null;
@@ -83,6 +84,7 @@ export type Database = {
           loc?: string | null;
           speed_mps?: number | null;
           updated_at?: string;
+      vehicle_type?: string | null;
         };
         Update: {
           accuracy_m?: number | null;

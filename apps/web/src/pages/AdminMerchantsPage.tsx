@@ -86,7 +86,7 @@ export default function AdminMerchantsPage() {
     staleTime: 10_000,
   });
 
-  const rows = merchantsQ.data?.rows ?? [];
+  const rows = useMemo(() => merchantsQ.data?.rows ?? [], [merchantsQ.data?.rows]);
   const hasMore = !!merchantsQ.data?.hasMore;
 
   const [expanded, setExpanded] = useState<string | null>(null);
