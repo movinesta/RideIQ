@@ -2,12 +2,12 @@
 -- PostgreSQL database dump
 --
 
-\restrict klER3vKmFeZYktcZIsOBytbsnjYz8SF6HbdTrzOgqFeJsfIiXC1wvmwb9Ja3FL2
+\restrict pKVTo9bIt1xBAhIdmEb2HxBQqtdhevgX3cdOVuTeevUwwivFYWse9XVd6S2GebV
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.7
 
--- Started on 2026-01-28 15:08:09
+-- Started on 2026-01-28 18:22:20
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -2790,7 +2790,7 @@ COMMENT ON FUNCTION public.dispatch_accept_ride(p_request_id uuid, p_driver_id u
 -- Name: dispatch_match_ride(uuid, uuid, numeric, integer, integer, integer); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
-CREATE FUNCTION public.dispatch_match_ride(p_request_id uuid, p_rider_id uuid, p_radius_m numeric DEFAULT 5000, p_limit_n integer DEFAULT 20, p_match_ttl_seconds integer DEFAULT 120, p_stale_after_seconds integer DEFAULT 30) RETURNS TABLE(id uuid, status public.ride_request_status, assigned_driver_id uuid, match_deadline timestamp with time zone, match_attempts integer, matched_at timestamp with time zone)
+CREATE FUNCTION public.dispatch_match_ride(p_request_id uuid, p_rider_id uuid, p_radius_m numeric DEFAULT 5000, p_limit_n integer DEFAULT 20, p_match_ttl_seconds integer DEFAULT 120, p_stale_after_seconds integer DEFAULT 120) RETURNS TABLE(id uuid, status public.ride_request_status, assigned_driver_id uuid, match_deadline timestamp with time zone, match_attempts integer, matched_at timestamp with time zone)
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog, extensions'
     AS $$
@@ -2805,6 +2805,7 @@ declare
   v_available bigint;
   v_quote bigint;
   v_req_capacity int := 4;
+  v_stale_after int;
 begin
   select * into rr
   from public.ride_requests as req
@@ -2826,7 +2827,6 @@ begin
 
   -- Handle expired match: release driver back to available
   if rr.status = 'matched' and rr.match_deadline is not null and rr.match_deadline <= now() then
-    -- REFACTORED: Use transition_driver instead of direct UPDATE
     PERFORM public.transition_driver(rr.assigned_driver_id, 'available'::public.driver_status, NULL, 'match_expired');
 
     update public.ride_requests
@@ -2834,6 +2834,7 @@ begin
           assigned_driver_id = null,
           match_deadline = null
     where id = rr.id and status = 'matched';
+
     rr.status := 'requested';
     rr.assigned_driver_id := null;
     rr.match_deadline := null;
@@ -2856,20 +2857,40 @@ begin
   where w.user_id = rr.rider_id;
 
   v_available := coalesce(v_balance, 0) - coalesce(v_held, 0);
-  v_quote := coalesce(rr.quoted_fare_iqd, 0);
+
+  -- Quote: prefer persisted quote_amount_iqd but fall back to a fresh estimate.
+  v_quote := coalesce(rr.quote_amount_iqd, 0)::bigint;
+  if v_quote <= 0 then
+    v_quote := coalesce(public.estimate_ride_quote_iqd_v2(rr.pickup_loc, rr.dropoff_loc, rr.product_code), 0)::bigint;
+    if v_quote <= 0 then
+      raise exception 'invalid_quote';
+    end if;
+
+    -- Persist the computed quote to keep DB state consistent.
+    update public.ride_requests
+      set quote_amount_iqd = v_quote::bigint,
+          updated_at = now()
+    where id = rr.id;
+  end if;
 
   if v_available < v_quote then
     raise exception 'insufficient_wallet_balance';
   end if;
 
+  -- Guardrail: a 30s location freshness window is commonly too strict for mobile clients.
+  -- Keep a sane minimum to prevent accidental "no candidates" when drivers update on a 30–60s cadence.
+  v_stale_after := greatest(30, coalesce(p_stale_after_seconds, 120));
+
   for i in 1..3 loop
     with pickup as (
-      select rr.pickup::extensions.geometry as pickup
+      select rr.pickup_loc as pickup
     ), candidates as (
       select d.id as driver_id
       from public.drivers d
       cross join pickup
-      join public.driver_locations dl on dl.driver_id = d.id and dl.last_seen_at >= now() - make_interval(secs => p_stale_after_seconds)
+      join public.driver_locations dl
+        on dl.driver_id = d.id
+       and dl.updated_at >= now() - make_interval(secs => v_stale_after)
       where d.status = 'available'
         and not (d.id = any(tried))
         and extensions.st_dwithin(dl.loc, pickup.pickup, p_radius_m)
@@ -2898,13 +2919,13 @@ begin
 
     exit when candidate is null;
 
-    -- REFACTORED: Use transition_driver to reserve the driver
-    BEGIN
+    -- Reserve the driver
+    begin
       PERFORM public.transition_driver(candidate, 'reserved'::public.driver_status, NULL, 'matching');
-    EXCEPTION WHEN OTHERS THEN
+    exception when others then
       tried := array_append(tried, candidate);
       continue;
-    END;
+    end;
 
     begin
       update public.ride_requests as req
@@ -2924,7 +2945,6 @@ begin
       end if;
     exception
       when unique_violation then
-        -- REFACTORED: Use transition_driver to release
         PERFORM public.transition_driver(candidate, 'available'::public.driver_status, NULL, 'match_conflict');
       when others then
         PERFORM public.transition_driver(candidate, 'available'::public.driver_status, NULL, 'match_error');
@@ -2933,7 +2953,6 @@ begin
 
     tried := array_append(tried, candidate);
 
-    -- REFACTORED: Use transition_driver to release
     PERFORM public.transition_driver(candidate, 'available'::public.driver_status, NULL, 'match_failed');
   end loop;
 
@@ -3418,8 +3437,9 @@ declare
   area_id uuid;
   area_pricing_id uuid;
 begin
-  pickup_lat := extensions.st_y(_pickup::extensions.geometry);
-  pickup_lng := extensions.st_x(_pickup::extensions.geometry);
+  -- Extract pickup coordinates (WGS84) from geography
+  pickup_lat := extensions.st_y((_pickup)::extensions.geometry);
+  pickup_lng := extensions.st_x((_pickup)::extensions.geometry);
 
   select id, pricing_config_id
     into area_id, area_pricing_id
@@ -3442,10 +3462,22 @@ begin
   order by s.precedence asc, s.created_at desc
   limit 1;
 
+  -- If pricing has not been configured yet, fall back to sane defaults (matching table defaults).
+  if not found then
+    select
+      'IQD'::text as currency,
+      200::integer as base_fare_iqd,
+      80::integer as per_km_iqd,
+      15::integer as per_min_iqd,
+      300::integer as minimum_fare_iqd
+    into cfg;
+  end if;
+
   select coalesce((select rp.price_multiplier from public.ride_products rp where rp.code = _product_code), 1)
     into mult;
 
-  dist_m := extensions.st_distance(_pickup::extensions.geometry, _dropoff::extensions.geometry);
+  -- For geography, ST_Distance returns meters. Avoid casting to geometry (which yields degrees in EPSG:4326).
+  dist_m := extensions.st_distance(_pickup, _dropoff);
   dist_km := greatest(0, dist_m / 1000.0);
 
   quote := (cfg.base_fare_iqd + ceil(dist_km * cfg.per_km_iqd))::integer;
@@ -11937,6 +11969,32 @@ CREATE TABLE public.pricing_configs (
 
 
 ALTER TABLE public.pricing_configs OWNER TO postgres;
+
+
+--
+-- Seed a default pricing configuration so quoting works out-of-the-box.
+-- (Idempotent: safe to run multiple times.)
+--
+INSERT INTO public.pricing_configs (currency, base_fare_iqd, per_km_iqd, per_min_iqd, minimum_fare_iqd, active, max_surge_multiplier)
+SELECT 'IQD', 200, 80, 15, 300, true, 1.5
+WHERE NOT EXISTS (SELECT 1 FROM public.pricing_configs);
+
+DO $$
+BEGIN
+  -- If configs exist but none is active, activate the most recent config.
+  IF EXISTS (SELECT 1 FROM public.pricing_configs)
+     AND NOT EXISTS (SELECT 1 FROM public.pricing_configs WHERE active = true) THEN
+    UPDATE public.pricing_configs
+      SET active = true
+    WHERE id = (
+      SELECT id
+      FROM public.pricing_configs
+      ORDER BY created_at DESC
+      LIMIT 1
+    );
+  END IF;
+END;
+$$;
 
 --
 -- TOC entry 8583 (class 0 OID 0)
@@ -35253,11 +35311,11 @@ CREATE EVENT TRIGGER pgrst_drop_watch ON sql_drop
 
 ALTER EVENT TRIGGER pgrst_drop_watch OWNER TO supabase_admin;
 
--- Completed on 2026-01-28 15:16:07
+-- Completed on 2026-01-28 18:30:22
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict klER3vKmFeZYktcZIsOBytbsnjYz8SF6HbdTrzOgqFeJsfIiXC1wvmwb9Ja3FL2
+\unrestrict pKVTo9bIt1xBAhIdmEb2HxBQqtdhevgX3cdOVuTeevUwwivFYWse9XVd6S2GebV
 

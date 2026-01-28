@@ -67,7 +67,10 @@ Deno.serve((req) => withRequestContext('match-ride', req, async (ctx) => {
     p_radius_m: clampNumber(asFiniteNumber(body.radius_m) ?? 5000, 100, 50000),
     p_limit_n: clampInt(asFiniteNumber(body.limit_n) ?? 20, 1, 50),
     p_match_ttl_seconds: clampInt(asFiniteNumber(body.match_ttl_seconds) ?? 120, 30, 600),
-    p_stale_after_seconds: clampInt(asFiniteNumber(body.stale_after_seconds) ?? 30, 5, 600),
+    // NOTE: Many mobile clients report location on a ~30–60s cadence when idle (battery/network constraints).
+    // A 30s freshness window is too strict and results in "no candidates" even when nearby drivers exist.
+    // Default to 120s to align with the server-side stale-driver logic and scheduled matching.
+    p_stale_after_seconds: clampInt(asFiniteNumber(body.stale_after_seconds) ?? 120, 5, 600),
   });
 
   if (error) {
