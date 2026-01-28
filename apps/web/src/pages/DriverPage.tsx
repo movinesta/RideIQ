@@ -221,6 +221,21 @@ export default function DriverPage() {
   const [pendingTransition, setPendingTransition] = React.useState<{ rideId: string; to: string } | null>(null);
 
   const [nowMs, setNowMs] = React.useState(() => Date.now());
+  const [geo, setGeo] = React.useState<GeoState>({
+    tracking: false,
+    lastFixAt: null,
+    lat: null,
+    lng: null,
+    accuracyM: null,
+    error: null,
+  });
+  const [baseVehicle, setBaseVehicle] = React.useState<'car' | 'motorcycle' | 'cargo'>('car');
+  const [carCategory, setCarCategory] = React.useState<'private' | 'taxi'>('private');
+  const vehicleType = React.useMemo(() => {
+    if (baseVehicle === 'car') return carCategory === 'taxi' ? 'car_taxi' : 'car_private';
+    if (baseVehicle === 'motorcycle') return 'motorcycle';
+    return 'cargo';
+  }, [baseVehicle, carCategory]);
 
   const driver = useQuery({ queryKey: ['driver'], queryFn: fetchDriver });
   const profile = useQuery({ queryKey: ['profile'], queryFn: fetchProfile, enabled: !!driver.data });
@@ -228,38 +243,38 @@ export default function DriverPage() {
   const vehicle = useQuery({ queryKey: ['driver_vehicle'], queryFn: fetchVehicle, enabled: !!driver.data });
   const assigned = useQuery({ queryKey: ['assigned_requests'], queryFn: fetchAssignedRequests, enabled: !!driver.data });
 
-const driverPos = React.useMemo<LatLng | null>(() => {
-  if (typeof geo.lat !== 'number' || typeof geo.lng !== 'number') return null;
-  if (!Number.isFinite(geo.lat) || !Number.isFinite(geo.lng)) return null;
-  return { lat: geo.lat, lng: geo.lng };
-}, [geo.lat, geo.lng]);
+  const driverPos = React.useMemo<LatLng | null>(() => {
+    if (typeof geo.lat !== 'number' || typeof geo.lng !== 'number') return null;
+    if (!Number.isFinite(geo.lat) || !Number.isFinite(geo.lng)) return null;
+    return { lat: geo.lat, lng: geo.lng };
+  }, [geo.lat, geo.lng]);
 
-const activeRequest = React.useMemo<RideRequestRow | null>(() => {
-  const arr = assigned.data ?? [];
-  return arr.length ? arr[0] : null;
-}, [assigned.data]);
+  const activeRequest = React.useMemo<RideRequestRow | null>(() => {
+    const arr = assigned.data ?? [];
+    return arr.length ? arr[0] : null;
+  }, [assigned.data]);
 
-const pickupPos = React.useMemo<LatLng | null>(() => {
-  const lat = Number(activeRequest?.pickup_lat);
-  const lng = Number(activeRequest?.pickup_lng);
-  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
-}, [activeRequest?.pickup_lat, activeRequest?.pickup_lng]);
+  const pickupPos = React.useMemo<LatLng | null>(() => {
+    const lat = Number(activeRequest?.pickup_lat);
+    const lng = Number(activeRequest?.pickup_lng);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }, [activeRequest?.pickup_lat, activeRequest?.pickup_lng]);
 
-const dropoffPos = React.useMemo<LatLng | null>(() => {
-  const lat = Number(activeRequest?.dropoff_lat);
-  const lng = Number(activeRequest?.dropoff_lng);
-  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
-}, [activeRequest?.dropoff_lat, activeRequest?.dropoff_lng]);
+  const dropoffPos = React.useMemo<LatLng | null>(() => {
+    const lat = Number(activeRequest?.dropoff_lat);
+    const lng = Number(activeRequest?.dropoff_lng);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }, [activeRequest?.dropoff_lat, activeRequest?.dropoff_lng]);
 
-const driverMapCenter = driverPos ?? pickupPos ?? dropoffPos ?? { lat: 33.3152, lng: 44.3661 };
+  const driverMapCenter = driverPos ?? pickupPos ?? dropoffPos ?? { lat: 33.3152, lng: 44.3661 };
 
-const driverMapMarkers = React.useMemo<MapMarker[]>(() => {
-  const ms: MapMarker[] = [];
-  if (driverPos) ms.push({ id: 'driver', position: driverPos, label: 'You', title: 'Your location' });
-  if (pickupPos) ms.push({ id: 'pickup', position: pickupPos, label: 'P', title: 'Pickup' });
-  if (dropoffPos) ms.push({ id: 'dropoff', position: dropoffPos, label: 'D', title: 'Dropoff' });
-  return ms;
-}, [driverPos, pickupPos, dropoffPos]);
+  const driverMapMarkers = React.useMemo<MapMarker[]>(() => {
+    const ms: MapMarker[] = [];
+    if (driverPos) ms.push({ id: 'driver', position: driverPos, label: 'You', title: 'Your location' });
+    if (pickupPos) ms.push({ id: 'pickup', position: pickupPos, label: 'P', title: 'Pickup' });
+    if (dropoffPos) ms.push({ id: 'dropoff', position: dropoffPos, label: 'D', title: 'Dropoff' });
+    return ms;
+  }, [driverPos, pickupPos, dropoffPos]);
   const rides = useQuery({ queryKey: ['rides_driver'], queryFn: fetchRides, enabled: !!driver.data });
 
   const activeRide = React.useMemo(() => {
@@ -345,22 +360,6 @@ const driverMapMarkers = React.useMemo<MapMarker[]>(() => {
     }
   }, [ridecheckEvent]);
 
-  const [geo, setGeo] = React.useState<GeoState>({
-    tracking: false,
-    lastFixAt: null,
-    lat: null,
-    lng: null,
-    accuracyM: null,
-    error: null,
-  });
-  const [baseVehicle, setBaseVehicle] = React.useState<'car' | 'motorcycle' | 'cargo'>('car');
-  const [carCategory, setCarCategory] = React.useState<'private' | 'taxi'>('private');
-  const vehicleType = React.useMemo(() => {
-    if (baseVehicle === 'car') return carCategory === 'taxi' ? 'car_taxi' : 'car_private';
-    if (baseVehicle === 'motorcycle') return 'motorcycle';
-    return 'cargo';
-  }, [baseVehicle, carCategory]);
-
   // Location tracking (throttled)
   React.useEffect(() => {
     if (!geo.tracking) return;
@@ -401,7 +400,7 @@ const driverMapMarkers = React.useMemo<MapMarker[]>(() => {
             try {
               const { error } = await supabase.from('driver_locations').upsert({
                 driver_id: uid,
-                      vehicle_type: vehicleType,
+                vehicle_type: vehicleType,
                 lat,
                 lng,
                 accuracy_m: acc ?? undefined,
