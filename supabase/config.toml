@@ -48,6 +48,9 @@ verify_jwt = false
 [functions.topup-check]
 verify_jwt = false
 
+[functions.drivers-nearby]
+verify_jwt = false
+
 [functions.scheduled-ride-create]
 verify_jwt = false
 
