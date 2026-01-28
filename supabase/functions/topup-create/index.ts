@@ -12,9 +12,6 @@ import { findPreset, findProvider, getPaymentsPublicConfig } from '../_shared/pa
 type Body = {
   provider_code?: string;
   preset_id?: string;
-  // Backward-compatible alias (older clients used `package_id`).
-  // We keep accepting it to avoid breaking deployed app builds.
-  package_id?: string;
   idempotency_key?: string;
 };
 
@@ -58,8 +55,7 @@ Deno.serve(async (req) => {
 
     const body: Body = await req.json().catch(() => ({}));
     const providerCode = (body.provider_code ?? '').trim().toLowerCase();
-    // Prefer `preset_id`; fall back to legacy `package_id`.
-    const presetId = (body.preset_id ?? body.package_id ?? '').trim();
+    const presetId = (body.preset_id ?? '').trim();
     const idempotencyKey = (body.idempotency_key ?? '').trim() || null;
 
     if (!providerCode) return errorJson('provider_code is required', 400, 'VALIDATION_ERROR');
@@ -159,16 +155,67 @@ Deno.serve(async (req) => {
       failureUrl.searchParams.set('intentId', intentId);
       failureUrl.searchParams.set('result', 'failure');
 
-      const { transactionId, redirectUrl, raw } = await zaincashV2InitPayment(cfg, {
-        // Use intentId as a UUID externalReferenceId (idempotency key)
-        externalReferenceId: intentId,
-        orderId: intentId,
-        amountIQD: Math.trunc(amountIqd),
-        // Optional: you can pass user phone if you have it; we keep it unset here.
-        customerPhone: null,
-        successUrl: successUrl.toString(),
-        failureUrl: failureUrl.toString(),
-      });
+      let transactionId = '';
+      let redirectUrl = '';
+      let raw: any = null;
+      try {
+        const out = await zaincashV2InitPayment(cfg, {
+          // Use intentId as a UUID externalReferenceId (idempotency key)
+          externalReferenceId: intentId,
+          orderId: intentId,
+          amountIQD: Math.trunc(amountIqd),
+          // Optional: you can pass user phone if you have it; we keep it unset here.
+          customerPhone: null,
+          successUrl: successUrl.toString(),
+          failureUrl: failureUrl.toString(),
+        });
+        transactionId = out.transactionId;
+        redirectUrl = out.redirectUrl;
+        raw = out.raw;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const status = (e as any)?.status ?? null;
+        const url = (e as any)?.url ?? null;
+        const body = (e as any)?.body ?? null;
+
+        // Persist failure for debugging and idempotency.
+        try {
+          await service.from('provider_events').insert({
+            provider_code: 'zaincash',
+            provider_event_id: `init_error:${intentId}`,
+            payload: { intent_id: intentId, error: { message: msg, status, url, body } },
+          });
+        } catch {
+          // ignore duplicates
+        }
+
+        await service
+          .from('topup_intents')
+          .update({
+            status: 'failed',
+            failure_reason: `zaincash_init_failed:${status ?? 'error'}`,
+            provider_payload: { error: { message: msg, status, url, body }, external_reference_id: intentId },
+          })
+          .eq('id', intentId);
+
+        if (status === 404) {
+          return errorJson(
+            'ZainCash v2 endpoint was not found (HTTP 404). Check ZAINCASH_V2_BASE_URL: it should be the environment base URL (e.g. https://pg-api-uat.zaincash.iq), not a full endpoint path.',
+            502,
+            'PROVIDER_ERROR',
+          );
+        }
+
+        if (status === 401 || status === 403) {
+          return errorJson(
+            'ZainCash v2 rejected the request (HTTP 401/403). Verify ZAINCASH_V2_CLIENT_ID, ZAINCASH_V2_CLIENT_SECRET, ZAINCASH_V2_SCOPE, and that you are using the correct environment base URL.',
+            502,
+            'PROVIDER_ERROR',
+          );
+        }
+
+        return errorJson('Failed to initialize ZainCash payment.', 502, 'PROVIDER_ERROR');
+      }
 
       await service
         .from('topup_intents')

@@ -18,6 +18,41 @@ export type ZaincashV2Config = {
   serviceType: string;
 };
 
+// ZainCash v2 documentation uses an origin-only base URL (e.g. https://pg-api-uat.zaincash.iq)
+// and then endpoint paths like /oauth2/token and /api/v2/payment-gateway/transaction/init.
+// In practice, misconfiguration is common (people paste a full endpoint URL). Normalize safely.
+function normalizeBaseUrl(raw: string): string {
+  let v = String(raw ?? '').trim();
+  if (!v) return '';
+
+  // Accept values without scheme (e.g. pg-api-uat.zaincash.iq)
+  if (!/^https?:\/\//i.test(v)) v = `https://${v}`;
+
+  let u: URL;
+  try {
+    u = new URL(v);
+  } catch {
+    return v.replace(/\/+$/, '');
+  }
+
+  // If someone pasted a full endpoint URL, strip known endpoint prefixes.
+  // Keep any custom proxy prefix path (rare) unless it matches ZainCash endpoint roots.
+  const pathname = (u.pathname || '').replace(/\/+$/, '');
+  let prefix = pathname;
+  const knownRoots = ['/api/v2/payment-gateway', '/oauth2'];
+  for (const root of knownRoots) {
+    const idx = prefix.toLowerCase().indexOf(root);
+    if (idx >= 0) {
+      prefix = prefix.slice(0, idx);
+      break;
+    }
+  }
+
+  // Remove trailing slash from the prefix and recompose.
+  prefix = prefix.replace(/\/+$/, '');
+  return `${u.origin}${prefix}`.replace(/\/+$/, '');
+}
+
 function mustEnv(name: string): string {
   const v = envTrim(name);
   if (!v) throw new Error(`Missing ${name}`);
@@ -25,7 +60,7 @@ function mustEnv(name: string): string {
 }
 
 export function getZaincashV2Config(): ZaincashV2Config {
-  const baseUrl = mustEnv('ZAINCASH_V2_BASE_URL').replace(/\/$/, '');
+  const baseUrl = normalizeBaseUrl(mustEnv('ZAINCASH_V2_BASE_URL'));
   const clientId = mustEnv('ZAINCASH_V2_CLIENT_ID');
   const clientSecret = mustEnv('ZAINCASH_V2_CLIENT_SECRET');
   const apiKey = mustEnv('ZAINCASH_V2_API_KEY');
@@ -53,10 +88,15 @@ async function fetchJson(url: string, init: RequestInit): Promise<any> {
   const txt = await res.text();
   const data = safeJsonParse(txt) ?? { raw: txt };
   if (!res.ok) {
-    const msg = (data && (data.message || data.error_description || data.error)) ? String(data.message || data.error_description || data.error) : `HTTP ${res.status}`;
-    const err = new Error(msg);
+    const method = String((init as any)?.method ?? 'GET').toUpperCase();
+    const msg = (data && (data.message || data.error_description || data.error))
+      ? String(data.message || data.error_description || data.error)
+      : `HTTP ${res.status}`;
+    // Include URL in the message so callers can diagnose misconfigured base URLs and paths.
+    const err = new Error(`${msg} (${method} ${url})`);
     (err as any).status = res.status;
     (err as any).body = data;
+    (err as any).url = url;
     throw err;
   }
   return data;
