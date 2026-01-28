@@ -26,78 +26,137 @@ function mustEnv(name: string): string {
 
 export function getZaincashV2Config(): ZaincashV2Config {
   const baseUrl = mustEnv('ZAINCASH_V2_BASE_URL').replace(/\/$/, '');
-  const clientId = mustEnv('ZAINCASH_V2_CLIENT_ID');
-  const clientSecret = mustEnv('ZAINCASH_V2_CLIENT_SECRET');
-  const apiKey = mustEnv('ZAINCASH_V2_API_KEY');
-  const scope = envTrim('ZAINCASH_V2_SCOPE') || DEFAULT_ZAINCASH_SCOPE;
-  const languageRaw = (envTrim('ZAINCASH_V2_LANGUAGE') || DEFAULT_ZAINCASH_LANGUAGE) as string;
-  const language = (['En', 'Ar', 'Ku'].includes(languageRaw) ? languageRaw : 'En') as ZaincashV2Config['language'];
-  const serviceType = mustEnv('ZAINCASH_V2_SERVICE_TYPE');
-
-  return { baseUrl, clientId, clientSecret, apiKey, scope, language, serviceType };
+  return {
+    baseUrl,
+    clientId: mustEnv('ZAINCASH_V2_CLIENT_ID'),
+    clientSecret: mustEnv('ZAINCASH_V2_CLIENT_SECRET'),
+    apiKey: mustEnv('ZAINCASH_V2_API_KEY'),
+    scope: envTrim('ZAINCASH_V2_SCOPE') || DEFAULT_ZAINCASH_SCOPE,
+    language: (envTrim('ZAINCASH_V2_LANGUAGE') as any) || DEFAULT_ZAINCASH_LANGUAGE,
+    serviceType: envTrim('ZAINCASH_V2_SERVICE_TYPE') || envTrim('TOPUP_SERVICE_TYPE') || 'Ride top-up',
+  };
 }
 
-type TokenCache = { token: string; expiresAtMs: number };
-let tokenCache: TokenCache | null = null;
+type FetchJsonOut = {
+  status: number;
+  ok: boolean;
+  url: string;
+  contentType: string;
+  data: any;
+};
 
-function safeJsonParse(txt: string): any {
+function safeStringify(obj: unknown, maxLen = 900): string {
   try {
-    return JSON.parse(txt);
+    const s = JSON.stringify(obj);
+    if (s.length <= maxLen) return s;
+    return s.slice(0, maxLen) + '…';
   } catch {
-    return null;
+    return String(obj);
   }
 }
 
-function getPath(obj: any, path: string): any {
-  if (!obj || typeof obj !== 'object') return undefined;
-  const parts = path.split('.');
-  let cur: any = obj;
-  for (const p of parts) {
-    if (!cur || typeof cur !== 'object') return undefined;
-    cur = cur[p];
+function safeJsonParse(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const trimmed = (text ?? '').trim();
+    return { raw: trimmed.slice(0, 2000) };
   }
-  return cur;
 }
 
-function pickFirst(obj: any, paths: string[]): string {
-  for (const p of paths) {
-    const v = getPath(obj, p);
-    if (v === null || v === undefined) continue;
-    const s = String(v).trim();
-    if (s) return s;
+async function fetchJson(url: string, init: RequestInit): Promise<FetchJsonOut> {
+  const res = await fetch(url, init);
+  const contentType = (res.headers.get('content-type') ?? '').toLowerCase();
+  const text = await res.text();
+  const data = safeJsonParse(text);
+
+  // Treat non-JSON responses as provider errors even if HTTP is 2xx, because
+  // ZainCash v2 endpoints are expected to return JSON.
+  const looksJson = contentType.includes('application/json') || contentType.includes('+json');
+  if (!looksJson && res.ok) {
+    const err: any = new Error(
+      `ZainCash HTTP ${res.status} non-JSON response from ${res.url} (check ZAINCASH_V2_BASE_URL / endpoint paths)`,
+    );
+    err.status = res.status;
+    err.body = data;
+    throw err;
   }
-  return '';
+
+  if (!res.ok) {
+    const err: any = new Error(`ZainCash HTTP ${res.status} from ${res.url}: ${safeStringify(data)}`);
+    err.status = res.status;
+    err.body = data;
+    throw err;
+  }
+
+  return { status: res.status, ok: res.ok, url: res.url, contentType, data };
 }
 
-class ZaincashV2Error extends Error {
-  status?: number;
-  body?: any;
-  constructor(message: string, opts?: { status?: number; body?: any }) {
-    super(message);
-    this.name = 'ZaincashV2Error';
-    if (opts) {
-      this.status = opts.status;
-      this.body = opts.body;
+function isUuid(v: unknown): v is string {
+  return typeof v === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+function isHttpUrl(v: unknown): v is string {
+  return typeof v === 'string' && /^https?:\/\//i.test(v);
+}
+
+function normKey(k: string): string {
+  return k.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function deepFind(obj: any, match: (key: string, value: any) => boolean, maxDepth = 8) {
+  const visited = new Set<any>();
+  const stack: Array<{ v: any; depth: number }> = [{ v: obj, depth: 0 }];
+
+  while (stack.length) {
+    const { v, depth } = stack.pop()!;
+    if (v == null) continue;
+    if (typeof v !== 'object') continue;
+    if (visited.has(v)) continue;
+    visited.add(v);
+
+    if (Array.isArray(v)) {
+      if (depth < maxDepth) {
+        for (let i = 0; i < v.length; i++) stack.push({ v: v[i], depth: depth + 1 });
+      }
+      continue;
+    }
+
+    for (const [k, val] of Object.entries(v)) {
+      if (match(k, val)) return { key: k, value: val };
+      if (depth < maxDepth && typeof val === 'object' && val !== null) stack.push({ v: val, depth: depth + 1 });
     }
   }
+
+  return null;
 }
 
-async function fetchJson(url: string, init: RequestInit): Promise<any> {
-  const res = await fetch(url, init);
-  const txt = await res.text();
-  const data = safeJsonParse(txt) ?? { raw: txt };
-  if (!res.ok) {
-    const msg = (data && (data.message || data.error_description || data.error))
-      ? String(data.message || data.error_description || data.error)
-      : `HTTP ${res.status}`;
-    throw new ZaincashV2Error(msg, { status: res.status, body: data });
-  }
-  return data;
+function summarizeInitBody(data: any): string {
+  if (data == null) return 'null';
+  if (typeof data === 'string') return `string:${data.slice(0, 200)}`;
+  if (typeof data !== 'object') return `type:${typeof data}`;
+
+  const d: any = data;
+  const msg = d.message ?? d.error ?? d.error_description ?? d.description ?? d.details ?? null;
+  const code = d.code ?? d.errorCode ?? d.error_code ?? d.statusCode ?? null;
+  const status = d.status ?? d.result ?? d.responseStatus ?? null;
+  const keys = Object.keys(d).slice(0, 18).join(',');
+
+  // If safeJsonParse fell back to {raw: ...}, surface that.
+  const raw = typeof d.raw === 'string' ? d.raw.slice(0, 200) : null;
+
+  return [
+    keys ? `keys=[${keys}]` : null,
+    status != null ? `status=${String(status)}` : null,
+    code != null ? `code=${String(code)}` : null,
+    msg != null ? `message=${String(msg).slice(0, 200)}` : null,
+    raw ? `raw=${raw}` : null,
+  ].filter(Boolean).join(' ');
 }
 
-export async function zaincashV2GetAccessToken(cfg: ZaincashV2Config): Promise<string> {
-  const now = Date.now();
-  if (tokenCache && tokenCache.expiresAtMs > now + 30_000) return tokenCache.token;
+async function getAccessToken(cfg: ZaincashV2Config): Promise<string> {
+  const url = cfg.baseUrl + ZAINCASH_OAUTH_PATH;
 
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
@@ -106,120 +165,134 @@ export async function zaincashV2GetAccessToken(cfg: ZaincashV2Config): Promise<s
     scope: cfg.scope,
   });
 
-  const data = await fetchJson(`${cfg.baseUrl}${ZAINCASH_OAUTH_PATH}`, {
+  const { data, status } = await fetchJson(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body,
   });
 
-  const token = String(data.access_token || '').trim();
-  const expiresIn = Number(data.expires_in || 0);
-  if (!token) throw new ZaincashV2Error('Missing access_token in token response', { status: 200, body: data });
+  const accessToken = (data?.access_token ?? data?.accessToken ?? '').toString();
+  if (!accessToken) {
+    const err: any = new Error(`ZainCash token response missing access_token: ${safeStringify(data)}`);
+    err.status = status;
+    err.body = data;
+    throw err;
+  }
 
-  // refresh 60s early
-  const expiresAtMs = now + Math.max(30, expiresIn - 60) * 1000;
-  tokenCache = { token, expiresAtMs };
-
-  return token;
+  return accessToken;
 }
 
 export type ZaincashV2InitInput = {
   externalReferenceId: string;
   orderId: string;
   amountIQD: number;
-  customerPhone?: string | null;
+  customerPhone: string | null;
   successUrl: string;
   failureUrl: string;
 };
 
-export async function zaincashV2InitPayment(cfg: ZaincashV2Config, input: ZaincashV2InitInput): Promise<{ transactionId: string; redirectUrl: string; raw: any }> {
-  const token = await zaincashV2GetAccessToken(cfg);
+export async function zaincashV2InitPayment(
+  cfg: ZaincashV2Config,
+  input: ZaincashV2InitInput,
+): Promise<{ transactionId: string; redirectUrl: string; raw: unknown }> {
+  const token = await getAccessToken(cfg);
+  const url = cfg.baseUrl + ZAINCASH_V2_INIT_PATH;
 
-  const payload: any = {
+  const payload = {
     language: cfg.language,
     externalReferenceId: input.externalReferenceId,
     orderId: input.orderId,
     serviceType: cfg.serviceType,
     amount: { value: input.amountIQD, currency: CURRENCY_IQD },
-    redirectUrls: {
-      successUrl: input.successUrl,
-      failureUrl: input.failureUrl,
-    },
+    customer: input.customerPhone ? { phone: input.customerPhone } : undefined,
+    redirectUrls: { successUrl: input.successUrl, failureUrl: input.failureUrl },
   };
 
-  if (input.customerPhone) {
-    payload.customer = { phone: input.customerPhone };
-  }
-
-  const data = await fetchJson(`${cfg.baseUrl}${ZAINCASH_V2_INIT_PATH}`, {
+  const out = await fetchJson(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
     },
     body: JSON.stringify(payload),
   });
 
-  const transactionId = pickFirst(data, [
-    'transactionId',
-    'transaction_id',
-    'id',
-    'data.transactionId',
-    'data.transaction_id',
-    'data.id',
-    'result.transactionId',
-    'result.transaction_id',
-    'result.id',
-    'transaction.transactionId',
-    'transaction.transaction_id',
-    'transaction.id',
-  ]);
+  const raw = out.data;
 
-  const redirectUrl = pickFirst(data, [
-    'redirectUrl',
-    'redirect_url',
-    'paymentUrl',
-    'payment_url',
-    'url',
-    'data.redirectUrl',
-    'data.redirect_url',
-    'data.paymentUrl',
-    'data.payment_url',
-    'data.url',
-    'result.redirectUrl',
-    'result.redirect_url',
-    'result.paymentUrl',
-    'result.payment_url',
-    'result.url',
-  ]);
+  // First: try the documented shape(s)
+  const knownTransactionId =
+    raw?.transactionId ??
+    raw?.transactionID ??
+    raw?.transaction_id ??
+    raw?.data?.transactionId ??
+    raw?.data?.transactionID ??
+    raw?.data?.transaction_id ??
+    raw?.result?.transactionId ??
+    raw?.result?.transactionID ??
+    raw?.result?.transaction_id ??
+    raw?.response?.transactionId ??
+    raw?.response?.transactionID ??
+    raw?.response?.transaction_id ??
+    raw?.payload?.transactionId ??
+    raw?.payload?.transactionID ??
+    raw?.payload?.transaction_id;
 
-  if (!transactionId || !redirectUrl) {
-    throw new ZaincashV2Error('Unexpected init response (missing transactionId/redirectUrl)', { status: 200, body: data });
+  const knownRedirectUrl =
+    raw?.redirectUrl ??
+    raw?.redirectURL ??
+    raw?.redirect_url ??
+    raw?.data?.redirectUrl ??
+    raw?.data?.redirectURL ??
+    raw?.data?.redirect_url ??
+    raw?.result?.redirectUrl ??
+    raw?.result?.redirectURL ??
+    raw?.result?.redirect_url ??
+    raw?.response?.redirectUrl ??
+    raw?.response?.redirectURL ??
+    raw?.response?.redirect_url ??
+    raw?.payload?.redirectUrl ??
+    raw?.payload?.redirectURL ??
+    raw?.payload?.redirect_url ??
+    raw?.paymentUrl ??
+    raw?.payment_url ??
+    raw?.data?.paymentUrl ??
+    raw?.data?.payment_url;
+
+  let transactionId = isUuid(knownTransactionId) ? knownTransactionId : '';
+  let redirectUrl = isHttpUrl(knownRedirectUrl) ? knownRedirectUrl : '';
+
+  // Second: robust deep extraction (handles additional wrapper objects)
+  if (!transactionId) {
+    const foundTx = deepFind(raw, (k, v) => {
+      if (!isUuid(v)) return false;
+      const nk = normKey(k);
+      return nk.includes('transaction') && nk.includes('id');
+    });
+    if (foundTx && isUuid(foundTx.value)) transactionId = foundTx.value;
   }
 
-  return { transactionId, redirectUrl, raw: data };
+  if (!redirectUrl) {
+    const foundUrl = deepFind(raw, (k, v) => {
+      if (!isHttpUrl(v)) return false;
+      const nk = normKey(k);
+      return nk.includes('redirect') && nk.includes('url') || nk.includes('payment') && nk.includes('url');
+    });
+    if (foundUrl && isHttpUrl(foundUrl.value)) redirectUrl = foundUrl.value;
+  }
+
+  if (!transactionId || !redirectUrl) {
+    const details = summarizeInitBody(raw);
+    const err: any = new Error(
+      `Unexpected init response (missing transactionId/redirectUrl). ${details || ''}`.trim(),
+    );
+    err.status = out.status;
+    err.body = raw;
+    throw err;
+  }
+
+  return { transactionId, redirectUrl, raw };
 }
 
-export async function zaincashV2Inquiry(cfg: ZaincashV2Config, transactionId: string): Promise<{ status: string; raw: any }> {
-  const token = await zaincashV2GetAccessToken(cfg);
-  const data = await fetchJson(`${cfg.baseUrl}${ZAINCASH_V2_INQUIRY_PREFIX}${encodeURIComponent(transactionId)}`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  const status = String(
-    data.status ||
-      data.transactionStatus ||
-      data.transaction_status ||
-      data.transaction?.status ||
-      data.data?.status ||
-      ''
-  ).toUpperCase();
-
-  return { status, raw: data };
+export async function zaincashV2BuildInquiryUrl(cfg: ZaincashV2Config, transactionId: string) {
+  return cfg.baseUrl + ZAINCASH_V2_INQUIRY_PREFIX + transactionId;
 }
