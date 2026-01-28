@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   const preflight = handleOptions(req);
   if (preflight) return preflight;
 
-  if (req.method !== 'GET') {
+  if (req.method !== 'GET' && req.method !== 'POST') {
     return errorJson('Method not allowed', 405, 'METHOD_NOT_ALLOWED');
   }
 
