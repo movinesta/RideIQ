@@ -35,11 +35,25 @@ Deno.serve(async (req) => {
     if (req.method !== 'GET') return errorJson('Method not allowed', 405);
 
     const url = new URL(req.url);
-    const token = String(url.searchParams.get('token') ?? url.searchParams.get('jwt') ?? '').trim();
-    const intentIdQ = String(url.searchParams.get('intentId') ?? '').trim();
-    const resultHint = String(url.searchParams.get('result') ?? '').trim().toLowerCase();
 
-    if (!token) return errorJson('Missing token', 400, 'VALIDATION_ERROR');
+    // ZainCash redirects back with a JWT token parameter.
+    // IMPORTANT: ZainCash appends `?token=...` even if your successUrl already contains query params.
+    // If you included your own query (e.g., `&result=success`), the token can end up inside that value like:
+    //   result=success?token=...
+    // We handle both formats.
+    let token = String(url.searchParams.get('token') ?? url.searchParams.get('jwt') ?? '').trim();
+    const intentIdQ = String(url.searchParams.get('intentId') ?? '').trim();
+    let resultHintRaw = String(url.searchParams.get('result') ?? '').trim();
+
+    if (!token && resultHintRaw && /[?&]token=/i.test(resultHintRaw)) {
+      const m = resultHintRaw.match(/[?&]token=([^&]+)/i);
+      if (m && m[1]) token = decodeURIComponent(m[1]);
+      resultHintRaw = resultHintRaw.split('?')[0].split('&')[0];
+    }
+
+    const resultHint = resultHintRaw.trim().toLowerCase();
+
+if (!token) return errorJson('Missing token', 400, 'VALIDATION_ERROR');
 
     let cfg;
     try {

@@ -147,16 +147,16 @@ Deno.serve(async (req) => {
       }
 
       const base = SUPABASE_URL.replace(/\/$/, '');
-      const successUrl = new URL(`${base}/functions/v1/zaincash-return`);
-      successUrl.searchParams.set('intentId', intentId);
-      successUrl.searchParams.set('result', 'success');
 
-      const failureUrl = new URL(`${base}/functions/v1/zaincash-return`);
-      failureUrl.searchParams.set('intentId', intentId);
-      failureUrl.searchParams.set('result', 'failure');
+      // ZainCash appends `?token=...` to the return URL even if you provide a URL that already has query params.
+      // If you add your own query (e.g. `?intentId=...&result=success`), the provider may produce an invalid URL like:
+      //   ...&result=success?token=...
+      // So the return URL MUST NOT contain any query params.
+      const returnUrl = `${base}/functions/v1/zaincash-return`;
+      const successUrl = returnUrl;
+      const failureUrl = returnUrl;
 
-
-      const initPayload = {
+const { transactionId, redirectUrl, raw } = await zaincashV2InitPayment(cfg, {
         // Use intentId as a UUID externalReferenceId (idempotency key)
         externalReferenceId: intentId,
         orderId: intentId,
@@ -165,45 +165,7 @@ Deno.serve(async (req) => {
         customerPhone: null,
         successUrl: successUrl.toString(),
         failureUrl: failureUrl.toString(),
-      };
-
-      let transactionId = '';
-      let redirectUrl = '';
-      let raw: unknown = null;
-
-      try {
-        const out = await zaincashV2InitPayment(cfg, initPayload);
-        transactionId = out.transactionId;
-        redirectUrl = out.redirectUrl;
-        raw = out.raw;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        const status = (e as any)?.status;
-        const body = (e as any)?.body;
-
-        // Best-effort provider event logging (safe for debugging; does not include secrets)
-        try {
-          await service.from('provider_events').insert({
-            provider_code: provider.code,
-            provider_event_id: `init:${intentId}`,
-            payload: { request: initPayload, response: body ?? null, status: status ?? null, error: msg },
-          });
-        } catch {
-          // ignore duplicates
-        }
-
-        await service
-          .from('topup_intents')
-          .update({
-            status: 'failed',
-            failure_reason: `zaincash_init_failed:${String(status ?? 'unknown')}`,
-            provider_payload: { error: { message: msg, status: status ?? null, body: body ?? null }, request: initPayload },
-          })
-          .eq('id', intentId);
-
-        return errorJson('Failed to initialize ZainCash payment.', 502, 'PROVIDER_ERROR', { provider_message: msg });
-      }
-
+      });
 
       await service
         .from('topup_intents')
