@@ -82,11 +82,30 @@ export async function invokeEdge<T>(
     } catch (err) {
       lastErr = err;
 
-      // Improve debuggability by surfacing the request id (if we have one).
+      // If the access token becomes invalid (e.g., key rotation, session restored from old storage),
+      // Supabase Edge Functions may return 401 "Invalid JWT" at the gateway layer.
+      // Refresh the session once and retry transparently.
       if (err instanceof FunctionsHttpError) {
+        const status = err.context?.status;
+        if (status === 401 && i < attempts - 1) {
+          try {
+            await supabase.auth.refreshSession();
+            continue;
+          } catch {
+            // If refresh fails, we'll fall through and surface the original 401.
+          }
+        }
+
+        // Improve debuggability by surfacing the request id (if we have one).
         try {
-          const payload = await err.context.json();
-          const msg = typeof payload?.error === 'string' ? payload.error : err.message;
+          const res = err.context;
+          const payload = await (typeof (res as any)?.clone === 'function' ? (res as any).clone().json() : res.json());
+          const msg =
+            typeof payload?.error === 'string'
+              ? payload.error
+              : typeof payload?.message === 'string'
+                ? payload.message
+                : err.message;
           const rid = extractRequestId(payload) ?? requestId;
           throw new Error(rid ? `${msg} (requestId: ${rid})` : msg);
         } catch {
