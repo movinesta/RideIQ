@@ -45,6 +45,9 @@ verify_jwt = false
 [functions.match-ride]
 verify_jwt = false
 
+[functions.scheduled-ride-list]
+verify_jwt = false
+
 [functions.zaincash-webhook]
 verify_jwt = false
 
