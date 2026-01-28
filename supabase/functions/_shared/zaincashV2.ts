@@ -3,6 +3,7 @@ import {
   CURRENCY_IQD,
   DEFAULT_ZAINCASH_LANGUAGE,
   DEFAULT_ZAINCASH_SCOPE,
+  DEFAULT_HTTP_TIMEOUT_MS,
   ZAINCASH_OAUTH_PATH,
   ZAINCASH_V2_INIT_PATH,
   ZAINCASH_V2_INQUIRY_PREFIX,
@@ -18,41 +19,6 @@ export type ZaincashV2Config = {
   serviceType: string;
 };
 
-// ZainCash v2 documentation uses an origin-only base URL (e.g. https://pg-api-uat.zaincash.iq)
-// and then endpoint paths like /oauth2/token and /api/v2/payment-gateway/transaction/init.
-// In practice, misconfiguration is common (people paste a full endpoint URL). Normalize safely.
-function normalizeBaseUrl(raw: string): string {
-  let v = String(raw ?? '').trim();
-  if (!v) return '';
-
-  // Accept values without scheme (e.g. pg-api-uat.zaincash.iq)
-  if (!/^https?:\/\//i.test(v)) v = `https://${v}`;
-
-  let u: URL;
-  try {
-    u = new URL(v);
-  } catch {
-    return v.replace(/\/+$/, '');
-  }
-
-  // If someone pasted a full endpoint URL, strip known endpoint prefixes.
-  // Keep any custom proxy prefix path (rare) unless it matches ZainCash endpoint roots.
-  const pathname = (u.pathname || '').replace(/\/+$/, '');
-  let prefix = pathname;
-  const knownRoots = ['/api/v2/payment-gateway', '/oauth2'];
-  for (const root of knownRoots) {
-    const idx = prefix.toLowerCase().indexOf(root);
-    if (idx >= 0) {
-      prefix = prefix.slice(0, idx);
-      break;
-    }
-  }
-
-  // Remove trailing slash from the prefix and recompose.
-  prefix = prefix.replace(/\/+$/, '');
-  return `${u.origin}${prefix}`.replace(/\/+$/, '');
-}
-
 function mustEnv(name: string): string {
   const v = envTrim(name);
   if (!v) throw new Error(`Missing ${name}`);
@@ -60,10 +26,13 @@ function mustEnv(name: string): string {
 }
 
 export function getZaincashV2Config(): ZaincashV2Config {
-  const baseUrl = normalizeBaseUrl(mustEnv('ZAINCASH_V2_BASE_URL'));
+  const baseUrl = mustEnv('ZAINCASH_V2_BASE_URL').replace(/\/$/, '');
   const clientId = mustEnv('ZAINCASH_V2_CLIENT_ID');
   const clientSecret = mustEnv('ZAINCASH_V2_CLIENT_SECRET');
-  const apiKey = mustEnv('ZAINCASH_V2_API_KEY');
+  // ZainCash docs mention an "API key" used for HS256 JWT verification.
+  // In practice, some merchants (especially in UAT) are provided only client_secret.
+  // To avoid blocking payment initialization, fall back to clientSecret when ZAINCASH_V2_API_KEY is not set.
+  const apiKey = envTrim('ZAINCASH_V2_API_KEY') || clientSecret;
   const scope = envTrim('ZAINCASH_V2_SCOPE') || DEFAULT_ZAINCASH_SCOPE;
   const languageRaw = (envTrim('ZAINCASH_V2_LANGUAGE') || DEFAULT_ZAINCASH_LANGUAGE) as string;
   const language = (['En', 'Ar', 'Ku'].includes(languageRaw) ? languageRaw : 'En') as ZaincashV2Config['language'];
@@ -83,20 +52,37 @@ function safeJsonParse(txt: string): any {
   }
 }
 
-async function fetchJson(url: string, init: RequestInit): Promise<any> {
-  const res = await fetch(url, init);
-  const txt = await res.text();
+async function fetchJson(url: string, init: RequestInit, timeoutMs = DEFAULT_HTTP_TIMEOUT_MS): Promise<any> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+
+  let res: Response;
+  let txt = '';
+  try {
+    res = await fetch(url, { ...init, signal: controller.signal });
+    txt = await res.text();
+  } catch (e) {
+    const err = new Error(e instanceof Error ? e.message : String(e));
+    (err as any).status = 0;
+    (err as any).body = { raw: txt };
+    (err as any).url = url;
+    (err as any).method = (init.method ?? 'GET').toUpperCase();
+    (err as any).is_network_error = true;
+    throw err;
+  } finally {
+    clearTimeout(t);
+  }
+
   const data = safeJsonParse(txt) ?? { raw: txt };
   if (!res.ok) {
-    const method = String((init as any)?.method ?? 'GET').toUpperCase();
     const msg = (data && (data.message || data.error_description || data.error))
       ? String(data.message || data.error_description || data.error)
       : `HTTP ${res.status}`;
-    // Include URL in the message so callers can diagnose misconfigured base URLs and paths.
-    const err = new Error(`${msg} (${method} ${url})`);
+    const err = new Error(msg);
     (err as any).status = res.status;
     (err as any).body = data;
     (err as any).url = url;
+    (err as any).method = (init.method ?? 'GET').toUpperCase();
     throw err;
   }
   return data;

@@ -155,66 +155,78 @@ Deno.serve(async (req) => {
       failureUrl.searchParams.set('intentId', intentId);
       failureUrl.searchParams.set('result', 'failure');
 
+      const initInput = {
+        // Use intentId as a UUID externalReferenceId (idempotency key)
+        externalReferenceId: intentId,
+        orderId: intentId,
+        amountIQD: Math.trunc(amountIqd),
+        // Optional: you can pass user phone if you have it; we keep it unset here.
+        customerPhone: null,
+        successUrl: successUrl.toString(),
+        failureUrl: failureUrl.toString(),
+      };
+
       let transactionId = '';
       let redirectUrl = '';
       let raw: any = null;
       try {
-        const out = await zaincashV2InitPayment(cfg, {
-          // Use intentId as a UUID externalReferenceId (idempotency key)
-          externalReferenceId: intentId,
-          orderId: intentId,
-          amountIQD: Math.trunc(amountIqd),
-          // Optional: you can pass user phone if you have it; we keep it unset here.
-          customerPhone: null,
-          successUrl: successUrl.toString(),
-          failureUrl: failureUrl.toString(),
-        });
+        const out = await zaincashV2InitPayment(cfg, initInput);
         transactionId = out.transactionId;
         redirectUrl = out.redirectUrl;
         raw = out.raw;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        const status = (e as any)?.status ?? null;
-        const url = (e as any)?.url ?? null;
+        const status = Number((e as any)?.status ?? 0) || 0;
         const body = (e as any)?.body ?? null;
+        const url = (e as any)?.url ?? null;
+        const method = (e as any)?.method ?? null;
 
-        // Persist failure for debugging and idempotency.
+        // Log provider init failure (best-effort) for debugging.
         try {
           await service.from('provider_events').insert({
-            provider_code: 'zaincash',
-            provider_event_id: `init_error:${intentId}`,
-            payload: { intent_id: intentId, error: { message: msg, status, url, body } },
+            provider_code: provider.code,
+            provider_event_id: `init:${intentId}:error`,
+            payload: {
+              phase: 'init',
+              request: {
+                input: initInput,
+                base_url: cfg.baseUrl,
+                scope: cfg.scope,
+                language: cfg.language,
+                service_type: cfg.serviceType,
+              },
+              response: { http_status: status, body, url, method },
+              error: { message: msg },
+            },
           });
         } catch {
-          // ignore duplicates
+          // ignore duplicates / logging failures
         }
 
         await service
           .from('topup_intents')
           .update({
             status: 'failed',
-            failure_reason: `zaincash_init_failed:${status ?? 'error'}`,
-            provider_payload: { error: { message: msg, status, url, body }, external_reference_id: intentId },
+            failure_reason: `zaincash_init_failed:${status || 'network'}`,
+            provider_payload: {
+              preset_id: presetId,
+              init_error: { message: msg, http_status: status, body, url, method },
+            },
           })
           .eq('id', intentId);
 
-        if (status === 404) {
-          return errorJson(
-            'ZainCash v2 endpoint was not found (HTTP 404). Check ZAINCASH_V2_BASE_URL: it should be the environment base URL (e.g. https://pg-api-uat.zaincash.iq), not a full endpoint path.',
-            502,
-            'PROVIDER_ERROR',
-          );
-        }
+        await logAppEvent({
+          event_type: 'topup_provider_init_failed',
+          actor_id: user.id,
+          actor_type: 'rider',
+          payload: { intent_id: intentId, provider: 'zaincash', message: msg, http_status: status },
+        });
 
-        if (status === 401 || status === 403) {
-          return errorJson(
-            'ZainCash v2 rejected the request (HTTP 401/403). Verify ZAINCASH_V2_CLIENT_ID, ZAINCASH_V2_CLIENT_SECRET, ZAINCASH_V2_SCOPE, and that you are using the correct environment base URL.',
-            502,
-            'PROVIDER_ERROR',
-          );
-        }
-
-        return errorJson('Failed to initialize ZainCash payment.', 502, 'PROVIDER_ERROR');
+        // Return a stable error for the client but keep enough metadata to debug.
+        return errorJson('Failed to initialize ZainCash payment.', 502, 'PROVIDER_ERROR', {
+          provider_http_status: status || undefined,
+          provider_message: msg || undefined,
+        });
       }
 
       await service
