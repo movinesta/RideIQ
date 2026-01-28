@@ -12,6 +12,9 @@ import { findPreset, findProvider, getPaymentsPublicConfig } from '../_shared/pa
 type Body = {
   provider_code?: string;
   preset_id?: string;
+  // Backward-compatible alias (older clients used `package_id`).
+  // We keep accepting it to avoid breaking deployed app builds.
+  package_id?: string;
   idempotency_key?: string;
 };
 
@@ -55,7 +58,8 @@ Deno.serve(async (req) => {
 
     const body: Body = await req.json().catch(() => ({}));
     const providerCode = (body.provider_code ?? '').trim().toLowerCase();
-    const presetId = (body.preset_id ?? '').trim();
+    // Prefer `preset_id`; fall back to legacy `package_id`.
+    const presetId = (body.preset_id ?? body.package_id ?? '').trim();
     const idempotencyKey = (body.idempotency_key ?? '').trim() || null;
 
     if (!providerCode) return errorJson('provider_code is required', 400, 'VALIDATION_ERROR');

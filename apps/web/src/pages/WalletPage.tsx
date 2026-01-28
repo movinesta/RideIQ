@@ -533,7 +533,8 @@ export default function WalletPage() {
     try {
       const idempotencyKey = crypto.randomUUID();
       const { data, error } = await supabase.functions.invoke('topup-create', {
-        body: { provider_code: providerCode, package_id: presetId, idempotency_key: idempotencyKey },
+        // Edge Function expects `preset_id` (provider preset), not the legacy `package_id`.
+        body: { provider_code: providerCode, preset_id: presetId, idempotency_key: idempotencyKey },
       });
       if (error) throw error;
 
