@@ -155,7 +155,8 @@ Deno.serve(async (req) => {
       failureUrl.searchParams.set('intentId', intentId);
       failureUrl.searchParams.set('result', 'failure');
 
-      const initInput = {
+
+      const initPayload = {
         // Use intentId as a UUID externalReferenceId (idempotency key)
         externalReferenceId: intentId,
         orderId: intentId,
@@ -168,66 +169,41 @@ Deno.serve(async (req) => {
 
       let transactionId = '';
       let redirectUrl = '';
-      let raw: any = null;
+      let raw: unknown = null;
+
       try {
-        const out = await zaincashV2InitPayment(cfg, initInput);
+        const out = await zaincashV2InitPayment(cfg, initPayload);
         transactionId = out.transactionId;
         redirectUrl = out.redirectUrl;
         raw = out.raw;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        const status = Number((e as any)?.status ?? 0) || 0;
-        const body = (e as any)?.body ?? null;
-        const url = (e as any)?.url ?? null;
-        const method = (e as any)?.method ?? null;
+        const status = (e as any)?.status;
+        const body = (e as any)?.body;
 
-        // Log provider init failure (best-effort) for debugging.
+        // Best-effort provider event logging (safe for debugging; does not include secrets)
         try {
           await service.from('provider_events').insert({
             provider_code: provider.code,
-            provider_event_id: `init:${intentId}:error`,
-            payload: {
-              phase: 'init',
-              request: {
-                input: initInput,
-                base_url: cfg.baseUrl,
-                scope: cfg.scope,
-                language: cfg.language,
-                service_type: cfg.serviceType,
-              },
-              response: { http_status: status, body, url, method },
-              error: { message: msg },
-            },
+            provider_event_id: `init:${intentId}`,
+            payload: { request: initPayload, response: body ?? null, status: status ?? null, error: msg },
           });
         } catch {
-          // ignore duplicates / logging failures
+          // ignore duplicates
         }
 
         await service
           .from('topup_intents')
           .update({
             status: 'failed',
-            failure_reason: `zaincash_init_failed:${status || 'network'}`,
-            provider_payload: {
-              preset_id: presetId,
-              init_error: { message: msg, http_status: status, body, url, method },
-            },
+            failure_reason: `zaincash_init_failed:${String(status ?? 'unknown')}`,
+            provider_payload: { error: { message: msg, status: status ?? null, body: body ?? null }, request: initPayload },
           })
           .eq('id', intentId);
 
-        await logAppEvent({
-          event_type: 'topup_provider_init_failed',
-          actor_id: user.id,
-          actor_type: 'rider',
-          payload: { intent_id: intentId, provider: 'zaincash', message: msg, http_status: status },
-        });
-
-        // Return a stable error for the client but keep enough metadata to debug.
-        return errorJson('Failed to initialize ZainCash payment.', 502, 'PROVIDER_ERROR', {
-          provider_http_status: status || undefined,
-          provider_message: msg || undefined,
-        });
+        return errorJson('Failed to initialize ZainCash payment.', 502, 'PROVIDER_ERROR', { provider_message: msg });
       }
+
 
       await service
         .from('topup_intents')
