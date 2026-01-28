@@ -26,45 +26,206 @@ function mustEnv(name: string): string {
 
 export function getZaincashV2Config(): ZaincashV2Config {
   const baseUrl = mustEnv('ZAINCASH_V2_BASE_URL').replace(/\/$/, '');
-  const clientId = mustEnv('ZAINCASH_V2_CLIENT_ID');
-  const clientSecret = mustEnv('ZAINCASH_V2_CLIENT_SECRET');
-  const apiKey = mustEnv('ZAINCASH_V2_API_KEY');
-  const scope = envTrim('ZAINCASH_V2_SCOPE') || DEFAULT_ZAINCASH_SCOPE;
-  const languageRaw = (envTrim('ZAINCASH_V2_LANGUAGE') || DEFAULT_ZAINCASH_LANGUAGE) as string;
-  const language = (['En', 'Ar', 'Ku'].includes(languageRaw) ? languageRaw : 'En') as ZaincashV2Config['language'];
-  const serviceType = mustEnv('ZAINCASH_V2_SERVICE_TYPE');
-
-  return { baseUrl, clientId, clientSecret, apiKey, scope, language, serviceType };
+  return {
+    baseUrl,
+    clientId: mustEnv('ZAINCASH_V2_CLIENT_ID'),
+    clientSecret: mustEnv('ZAINCASH_V2_CLIENT_SECRET'),
+    apiKey: mustEnv('ZAINCASH_V2_API_KEY'),
+    scope: envTrim('ZAINCASH_V2_SCOPE') || DEFAULT_ZAINCASH_SCOPE,
+    language: (envTrim('ZAINCASH_V2_LANGUAGE') as any) || DEFAULT_ZAINCASH_LANGUAGE,
+    serviceType: envTrim('ZAINCASH_V2_SERVICE_TYPE') || envTrim('TOPUP_SERVICE_TYPE') || 'Ride top-up',
+  };
 }
 
-type TokenCache = { token: string; expiresAtMs: number };
-let tokenCache: TokenCache | null = null;
+type FetchJsonOut = {
+  status: number;
+  ok: boolean;
+  url: string;
+  contentType: string;
+  data: any;
+};
 
-function safeJsonParse(txt: string): any {
+function safeStringify(obj: unknown, maxLen = 900): string {
   try {
-    return JSON.parse(txt);
+    const s = JSON.stringify(obj);
+    if (s.length <= maxLen) return s;
+    return s.slice(0, maxLen) + '…';
   } catch {
-    return null;
+    return String(obj);
   }
 }
 
-async function fetchJson(url: string, init: RequestInit): Promise<any> {
+function safeJsonParse(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const trimmed = (text ?? '').trim();
+    return { raw: trimmed.slice(0, 2000) };
+  }
+}
+
+async function fetchJson(url: string, init: RequestInit): Promise<FetchJsonOut> {
   const res = await fetch(url, init);
-  const txt = await res.text();
-  const data = safeJsonParse(txt) ?? { raw: txt };
-  if (!res.ok) {
-    const msg = (data && (data.message || data.error_description || data.error)) ? String(data.message || data.error_description || data.error) : `HTTP ${res.status}`;
-    const err = new Error(msg);
-    (err as any).status = res.status;
-    (err as any).body = data;
+  const contentType = (res.headers.get('content-type') ?? '').toLowerCase();
+  const text = await res.text();
+  const data = safeJsonParse(text);
+
+  // Treat non-JSON responses as provider errors even if HTTP is 2xx, because
+  // ZainCash v2 endpoints are expected to return JSON.
+  const looksJson = contentType.includes('application/json') || contentType.includes('+json');
+  if (!looksJson && res.ok) {
+    const err: any = new Error(
+      `ZainCash HTTP ${res.status} non-JSON response from ${res.url} (check ZAINCASH_V2_BASE_URL / endpoint paths)`,
+    );
+    err.status = res.status;
+    err.body = data;
     throw err;
   }
-  return data;
+
+  if (!res.ok) {
+    const err: any = new Error(`ZainCash HTTP ${res.status} from ${res.url}: ${safeStringify(data)}`);
+    err.status = res.status;
+    err.body = data;
+    throw err;
+  }
+
+  return { status: res.status, ok: res.ok, url: res.url, contentType, data };
 }
 
-export async function zaincashV2GetAccessToken(cfg: ZaincashV2Config): Promise<string> {
-  const now = Date.now();
-  if (tokenCache && tokenCache.expiresAtMs > now + 30_000) return tokenCache.token;
+function isUuidDashed(v: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+function normalizeUuid(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  const t = v.trim();
+  if (!t) return '';
+  if (isUuidDashed(t)) return t;
+
+  // Some gateways return UUIDs without dashes (32 hex chars). Normalize to dashed form.
+  if (/^[0-9a-f]{32}$/i.test(t)) {
+    return `${t.slice(0, 8)}-${t.slice(8, 12)}-${t.slice(12, 16)}-${t.slice(16, 20)}-${t.slice(20)}`;
+  }
+
+  return '';
+}
+
+function isUuid(v: unknown): v is string {
+  // Type guard: true if the value is a UUID (dashed or 32-hex). Use normalizeUuid() to get canonical form.
+  return !!normalizeUuid(v);
+}
+
+function isHttpUrl(v: unknown): v is string {
+  return typeof v === 'string' && /^https?:\/\//i.test(v);
+}
+
+function extractUuidFromText(text: string): string {
+  if (!text) return '';
+
+  // Try dashed UUID first.
+  const dashed = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+  if (dashed && dashed[0]) return normalizeUuid(dashed[0]);
+
+  // Fallback: 32-hex UUID without dashes.
+  const nodash = text.match(/[0-9a-f]{32}/i);
+  if (nodash && nodash[0]) return normalizeUuid(nodash[0]);
+
+  return '';
+}
+
+
+function extractTransactionIdFromRedirectUrl(redirectUrl: string): string {
+  // ZainCash sometimes encodes the transaction id into the redirectUrl itself.
+  // Accept UUIDs with dashes or 32-hex and normalize to dashed form.
+  const fromText = extractUuidFromText(redirectUrl);
+  const normalized = normalizeUuid(fromText);
+  if (normalized) return normalized;
+
+  try {
+    const u = new URL(redirectUrl);
+    const candidates = ['transactionId', 'transaction_id', 'txId', 'tx_id', 'id'];
+    for (const key of candidates) {
+      const v = u.searchParams.get(key);
+      const n = normalizeUuid(v);
+      if (n) return n;
+    }
+  } catch {
+    // ignore
+  }
+
+  return '';
+}
+
+function normKey(k: string): string {
+  return k.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function deepFind(obj: any, match: (key: string, value: any) => boolean, maxDepth = 8) {
+  const visited = new Set<any>();
+  const stack: Array<{ v: any; depth: number }> = [{ v: obj, depth: 0 }];
+
+  while (stack.length) {
+    const { v, depth } = stack.pop()!;
+    if (v == null) continue;
+    if (typeof v !== 'object') continue;
+    if (visited.has(v)) continue;
+    visited.add(v);
+
+    if (Array.isArray(v)) {
+      if (depth < maxDepth) {
+        for (let i = 0; i < v.length; i++) stack.push({ v: v[i], depth: depth + 1 });
+      }
+      continue;
+    }
+
+    for (const [k, val] of Object.entries(v)) {
+      if (match(k, val)) return { key: k, value: val };
+      if (depth < maxDepth && typeof val === 'object' && val !== null) stack.push({ v: val, depth: depth + 1 });
+    }
+  }
+
+  return null;
+}
+
+function summarizeInitBody(data: any): string {
+  if (data == null) return 'null';
+  if (typeof data === 'string') return `string:${data.slice(0, 200)}`;
+  if (typeof data !== 'object') return `type:${typeof data}`;
+
+  const d: any = data;
+  const msg = d.message ?? d.error ?? d.error_description ?? d.description ?? d.details ?? null;
+  const code = d.code ?? d.errorCode ?? d.error_code ?? d.statusCode ?? null;
+  const status = d.status ?? d.result ?? d.responseStatus ?? null;
+  const redirectError = d.redirectError ?? d.redirect_error ?? null;
+  const errFlag = d.err ?? null;
+  const keys = Object.keys(d).slice(0, 18).join(',');
+
+  // If safeJsonParse fell back to {raw: ...}, surface that.
+  const raw = typeof d.raw === 'string' ? d.raw.slice(0, 200) : null;
+
+  const redErrStr =
+    redirectError != null && String(redirectError).trim() !== ''
+      ? `redirectError=${String(redirectError).slice(0, 200)}`
+      : null;
+  const errStr =
+    errFlag != null && String(errFlag).trim() !== '' ? `err=${String(errFlag).slice(0, 60)}` : null;
+
+  return [
+    keys ? `keys=[${keys}]` : null,
+    status != null ? `status=${String(status)}` : null,
+    code != null ? `code=${String(code)}` : null,
+    msg != null ? `message=${String(msg).slice(0, 200)}` : null,
+    redErrStr,
+    errStr,
+    raw ? `raw=${raw}` : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+
+async function getAccessToken(cfg: ZaincashV2Config): Promise<string> {
+  const url = cfg.baseUrl + ZAINCASH_OAUTH_PATH;
 
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
@@ -73,142 +234,169 @@ export async function zaincashV2GetAccessToken(cfg: ZaincashV2Config): Promise<s
     scope: cfg.scope,
   });
 
-  const data = await fetchJson(`${cfg.baseUrl}${ZAINCASH_OAUTH_PATH}`, {
+  const { data, status } = await fetchJson(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body,
   });
 
-  const token = String(data.access_token || '').trim();
-  const expiresIn = Number(data.expires_in || 0);
-  if (!token) throw new Error('Missing access_token in token response');
+  const accessToken = (data?.access_token ?? data?.accessToken ?? '').toString();
+  if (!accessToken) {
+    const err: any = new Error(`ZainCash token response missing access_token: ${safeStringify(data)}`);
+    err.status = status;
+    err.body = data;
+    throw err;
+  }
 
-  // refresh 60s early
-  const expiresAtMs = now + Math.max(30, expiresIn - 60) * 1000;
-  tokenCache = { token, expiresAtMs };
-
-  return token;
+  return accessToken;
 }
 
 export type ZaincashV2InitInput = {
   externalReferenceId: string;
   orderId: string;
   amountIQD: number;
-  customerPhone?: string | null;
+  customerPhone: string | null;
   successUrl: string;
   failureUrl: string;
 };
 
-function isObjectLike(v: unknown): v is Record<string, any> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-function pickFirstString(obj: unknown, keys: string[]): string {
-  if (!isObjectLike(obj)) return '';
-  for (const k of keys) {
-    const v = (obj as any)[k];
-    if (typeof v === 'string' && v.trim()) return v.trim();
-  }
-  return '';
-}
-
-function extractProviderMessage(data: any): string {
-  const direct =
-    (typeof data?.message === 'string' && data.message.trim()) ? data.message.trim()
-      : (typeof data?.error_description === 'string' && data.error_description.trim()) ? data.error_description.trim()
-        : (typeof data?.error === 'string' && data.error.trim()) ? data.error.trim()
-          : '';
-
-  if (direct) return direct;
-
-  if (isObjectLike(data?.err) && typeof (data.err as any).msg === 'string') return String((data.err as any).msg);
-  if (isObjectLike(data?.error) && typeof (data.error as any).message === 'string') return String((data.error as any).message);
-  if (isObjectLike(data?.errors) && typeof (data.errors as any).message === 'string') return String((data.errors as any).message);
-
-  return '';
-}
-
 export async function zaincashV2InitPayment(
   cfg: ZaincashV2Config,
   input: ZaincashV2InitInput,
-): Promise<{ transactionId: string; redirectUrl: string; raw: any }> {
-  const token = await zaincashV2GetAccessToken(cfg);
+): Promise<{ transactionId: string; redirectUrl: string; raw: unknown }> {
+  const token = await getAccessToken(cfg);
+  const url = cfg.baseUrl + ZAINCASH_V2_INIT_PATH;
 
-  const payload: any = {
+  const payload = {
     language: cfg.language,
     externalReferenceId: input.externalReferenceId,
     orderId: input.orderId,
     serviceType: cfg.serviceType,
     amount: { value: input.amountIQD, currency: CURRENCY_IQD },
-    redirectUrls: {
-      successUrl: input.successUrl,
-      failureUrl: input.failureUrl,
-    },
+    customer: input.customerPhone ? { phone: input.customerPhone } : undefined,
+    redirectUrls: { successUrl: input.successUrl, failureUrl: input.failureUrl },
   };
 
-  if (input.customerPhone) {
-    payload.customer = { phone: input.customerPhone };
-  }
-
-  const data = await fetchJson(`${cfg.baseUrl}${ZAINCASH_V2_INIT_PATH}`, {
+  const out = await fetchJson(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
     },
     body: JSON.stringify(payload),
   });
 
-  // ZainCash v2 responses may return transactionId at the top-level, or nested under transactionDetails.
-  const transactionId =
-    pickFirstString(data, ['transactionId', 'transaction_id', 'id']) ||
-    pickFirstString((data as any)?.transactionDetails, ['transactionId', 'transaction_id', 'id']) ||
-    pickFirstString((data as any)?.transaction_details, ['transactionId', 'transaction_id', 'id']) ||
-    pickFirstString((data as any)?.transaction, ['transactionId', 'transaction_id', 'id']) ||
-    pickFirstString((data as any)?.data, ['transactionId', 'transaction_id', 'id']) ||
-    pickFirstString((data as any)?.data?.transactionDetails, ['transactionId', 'transaction_id', 'id']);
+  const raw = out.data;
 
-  const redirectUrl =
-    pickFirstString(data, ['redirectUrl', 'redirect_url', 'paymentUrl', 'url']) ||
-    pickFirstString((data as any)?.redirectUrls, ['redirectUrl', 'redirect_url', 'url']) ||
-    pickFirstString((data as any)?.data, ['redirectUrl', 'redirect_url', 'paymentUrl', 'url']);
+  // First: try the documented shape(s)
+  const knownTransactionId =
+    raw?.transactionId ??
+    raw?.transactionID ??
+    raw?.transaction_id ??
+    raw?.data?.transactionId ??
+    raw?.data?.transactionID ??
+    raw?.data?.transaction_id ??
+    raw?.result?.transactionId ??
+    raw?.result?.transactionID ??
+    raw?.result?.transaction_id ??
+    raw?.response?.transactionId ??
+    raw?.response?.transactionID ??
+    raw?.response?.transaction_id ??
+    raw?.payload?.transactionId ??
+    raw?.payload?.transactionID ??
+    raw?.payload?.transaction_id;
 
-  if (!transactionId || !redirectUrl) {
-    const keys = isObjectLike(data) ? Object.keys(data).join(',') : typeof data;
-    const providerMsg = extractProviderMessage(data);
-    const msg =
-      `Unexpected init response (missing transactionId/redirectUrl). keys=[${keys}]` +
-      (providerMsg ? ` provider=${providerMsg}` : '');
-    const err = new Error(msg);
-    (err as any).status = 502;
-    (err as any).body = data;
+  const knownRedirectUrl =
+    raw?.redirectUrl ??
+    raw?.redirectURL ??
+    raw?.redirect_url ??
+    raw?.data?.redirectUrl ??
+    raw?.data?.redirectURL ??
+    raw?.data?.redirect_url ??
+    raw?.result?.redirectUrl ??
+    raw?.result?.redirectURL ??
+    raw?.result?.redirect_url ??
+    raw?.response?.redirectUrl ??
+    raw?.response?.redirectURL ??
+    raw?.response?.redirect_url ??
+    raw?.payload?.redirectUrl ??
+    raw?.payload?.redirectURL ??
+    raw?.payload?.redirect_url ??
+    raw?.paymentUrl ??
+    raw?.payment_url ??
+    raw?.data?.paymentUrl ??
+    raw?.data?.payment_url;
+
+  let transactionId = normalizeUuid(knownTransactionId);
+  let redirectUrl = isHttpUrl(knownRedirectUrl) ? knownRedirectUrl : '';
+
+  // Second: robust deep extraction (handles additional wrapper objects)
+  if (!transactionId) {
+    const foundTx = deepFind(raw, (k, v) => {
+      if (!isUuid(v)) return false;
+      const nk = normKey(k);
+      return nk.includes('transaction') && nk.includes('id');
+    });
+    if (foundTx) transactionId = normalizeUuid(foundTx.value);
+  }
+
+  if (!redirectUrl) {
+    const foundUrl = deepFind(raw, (k, v) => {
+      if (!isHttpUrl(v)) return false;
+      const nk = normKey(k);
+      return nk.includes('redirect') && nk.includes('url') || nk.includes('payment') && nk.includes('url');
+    });
+    if (foundUrl && isHttpUrl(foundUrl.value)) redirectUrl = foundUrl.value;
+  }
+
+  // Third: if we have a redirectUrl but no explicit transactionId, try extracting it from the URL.
+  // This isn't a workaround: the transaction id is still the same UUID the gateway created —
+  // we're simply making the integration tolerant to provider response shape changes.
+  if (!transactionId && redirectUrl) {
+    const extracted = extractTransactionIdFromRedirectUrl(redirectUrl);
+    transactionId = normalizeUuid(extracted) || transactionId;
+  }
+
+  
+// If provider signals an error explicitly, surface it even if redirectUrl exists.
+// Note: some responses return err as a number/boolean and redirectError as an object.
+  const providerErrVal =
+    (raw as any)?.redirectError ??
+    (raw as any)?.redirect_error ??
+    (raw as any)?.err ??
+    (raw as any)?.error ??
+    (raw as any)?.message;
+
+  const providerErr = (() => {
+    if (providerErrVal == null) return '';
+    const asStr = typeof providerErrVal === 'string' ? providerErrVal : safeStringify(providerErrVal, 400);
+    const t = String(asStr).trim();
+    // Common "no error" values.
+    if (!t || t === '0' || t.toLowerCase() === 'false' || t.toLowerCase() === 'ok') return '';
+    return t;
+  })();
+
+  if (providerErr && (!transactionId || !redirectUrl)) {
+    const details = summarizeInitBody(raw);
+    const err: any = new Error(`ZainCash init error: ${providerErr}. ${details || ''}`.trim());
+    err.status = out.status;
+    err.body = raw;
     throw err;
   }
 
-  return { transactionId, redirectUrl, raw: data };
+  if (!transactionId || !redirectUrl) {
+    const details = summarizeInitBody(raw);
+    const err: any = new Error(
+      `Unexpected init response (missing transactionId/redirectUrl). ${details || ''}`.trim(),
+    );
+    err.status = out.status;
+    err.body = raw;
+    throw err;
+  }
+
+  return { transactionId, redirectUrl, raw };
 }
 
-export async function zaincashV2Inquiry(cfg: ZaincashV2Config, transactionId: string): Promise<{ status: string; raw: any }> {
-  const token = await zaincashV2GetAccessToken(cfg);
-  const data = await fetchJson(`${cfg.baseUrl}${ZAINCASH_V2_INQUIRY_PREFIX}${encodeURIComponent(transactionId)}`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  const status = String(
-    data.status ||
-      data.transactionStatus ||
-      data.transaction_status ||
-      data.transaction?.status ||
-      data.data?.status ||
-      ''
-  ).toUpperCase();
-
-  return { status, raw: data };
+export async function zaincashV2BuildInquiryUrl(cfg: ZaincashV2Config, transactionId: string) {
+  return cfg.baseUrl + ZAINCASH_V2_INQUIRY_PREFIX + transactionId;
 }
