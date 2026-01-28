@@ -1,6 +1,8 @@
 import React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import AdminNav from '../components/AdminNav';
+import { AdminServiceAreaMap, type BBox } from '../components/maps/AdminServiceAreaMap';
+import { AdminDriversPreviewMap, type NearbyDriverPoint } from '../components/maps/AdminDriversPreviewMap';
 import { supabase } from '../lib/supabaseClient';
 import { getIsAdmin } from '../lib/admin';
 import { errorText } from '../lib/errors';
@@ -11,6 +13,8 @@ type ServiceAreaRow = {
   governorate: string | null;
   is_active: boolean;
   priority: number;
+  match_radius_m: number | null;
+  driver_loc_stale_after_seconds: number | null;
   pricing_config_id: string | null;
   min_base_fare_iqd: number | null;
   surge_multiplier: number;
@@ -31,7 +35,9 @@ type PricingConfigRow = {
 async function fetchAreas(): Promise<ServiceAreaRow[]> {
   const { data, error } = await supabase
     .from('service_areas')
-    .select('id,name,governorate,is_active,priority,pricing_config_id,min_base_fare_iqd,surge_multiplier,surge_reason,created_at,updated_at')
+    .select(
+      'id,name,governorate,is_active,priority,match_radius_m,driver_loc_stale_after_seconds,pricing_config_id,min_base_fare_iqd,surge_multiplier,surge_reason,created_at,updated_at'
+    )
     .order('priority', { ascending: false })
     .order('updated_at', { ascending: false });
   if (error) throw error;
@@ -62,10 +68,39 @@ export default function AdminServiceAreasPage() {
   const [minLng, setMinLng] = React.useState('44.05');
   const [maxLat, setMaxLat] = React.useState('33.55');
   const [maxLng, setMaxLng] = React.useState('44.75');
+
+  const bbox: BBox = React.useMemo(() => {
+    const mnLat = Number(minLat);
+    const mnLng = Number(minLng);
+    const mxLat = Number(maxLat);
+    const mxLng = Number(maxLng);
+
+    // Fallback to a reasonable Baghdad-ish viewport if inputs are invalid.
+    const fallback: BBox = { minLat: 33.05, minLng: 44.05, maxLat: 33.55, maxLng: 44.75 };
+    if (![mnLat, mnLng, mxLat, mxLng].every((v) => Number.isFinite(v))) return fallback;
+    if (mnLat >= mxLat || mnLng >= mxLng) return fallback;
+    return { minLat: mnLat, minLng: mnLng, maxLat: mxLat, maxLng: mxLng };
+  }, [minLat, minLng, maxLat, maxLng]);
   const [pricingConfigId, setPricingConfigId] = React.useState<string>('');
   const [minBaseFare, setMinBaseFare] = React.useState<string>('');
 	const [surgeMultiplier, setSurgeMultiplier] = React.useState<string>('1.00');
 	const [surgeReason, setSurgeReason] = React.useState<string>('');
+
+  // Dispatch matching settings (stored on service_areas)
+  const [matchRadiusM, setMatchRadiusM] = React.useState<string>('5000');
+  const [driverLocStaleAfterS, setDriverLocStaleAfterS] = React.useState<string>('120');
+
+  // Admin diagnostics: preview nearby drivers on a map (does not mutate DB)
+  const [previewCenter, setPreviewCenter] = React.useState<{ lat: number; lng: number }>(() => {
+    // Center of the current bbox inputs (defaults to a Baghdad-ish viewport)
+    return { lat: (33.05 + 33.55) / 2, lng: (44.05 + 44.75) / 2 };
+  });
+  const [previewDrivers, setPreviewDrivers] = React.useState<NearbyDriverPoint[]>([]);
+  const [previewBusy, setPreviewBusy] = React.useState(false);
+
+  const [dispatchDraftById, setDispatchDraftById] = React.useState<
+    Record<string, { radius_m: string; stale_after_seconds: string }>
+  >({});
 
   React.useEffect(() => {
     let alive = true;
@@ -86,6 +121,43 @@ export default function AdminServiceAreasPage() {
 
   const areas = useQuery({ queryKey: ['admin_service_areas'], queryFn: fetchAreas, enabled: isAdmin === true });
   const pricing = useQuery({ queryKey: ['admin_pricing_configs'], queryFn: fetchPricingConfigs, enabled: isAdmin === true });
+
+  React.useEffect(() => {
+    if (!areas.data) return;
+    setDispatchDraftById((prev) => {
+      const next = { ...prev };
+      for (const a of areas.data) {
+        if (!next[a.id]) {
+          next[a.id] = {
+            radius_m: String(a.match_radius_m ?? 5000),
+            stale_after_seconds: String(a.driver_loc_stale_after_seconds ?? 120),
+          };
+        }
+      }
+      return next;
+    });
+  }, [areas.data]);
+
+  const refreshPreview = React.useCallback(async () => {
+    setPreviewBusy(true);
+    try {
+      const radius = Math.max(250, Math.min(50000, Number(matchRadiusM || 5000)));
+      const stale = Math.max(15, Math.min(3600, Number(driverLocStaleAfterS || 120)));
+      const { data, error } = await supabase.rpc('nearby_available_drivers_v1', {
+        p_pickup_lat: previewCenter.lat,
+        p_pickup_lng: previewCenter.lng,
+        p_radius_m: radius,
+        p_stale_after_seconds: stale,
+      });
+      if (error) throw error;
+      setPreviewDrivers((data ?? []) as NearbyDriverPoint[]);
+    } catch (e) {
+      toastError(e, 'Failed to load nearby drivers');
+      setPreviewDrivers([]);
+    } finally {
+      setPreviewBusy(false);
+    }
+  }, [matchRadiusM, driverLocStaleAfterS, previewCenter.lat, previewCenter.lng]);
 
   if (isAdmin === false) {
     return <div className="rounded-2xl border border-gray-200 bg-white p-6">Not authorized.</div>;
@@ -121,6 +193,26 @@ export default function AdminServiceAreasPage() {
           <Field label="Min lng" value={minLng} onChange={setMinLng} />
           <Field label="Max lat" value={maxLat} onChange={setMaxLat} />
           <Field label="Max lng" value={maxLng} onChange={setMaxLng} />
+
+          <div className="md:col-span-2">
+            <div className="text-sm">
+              Map editor
+              <div className="mt-1 text-xs text-gray-600">
+                Draw/resize the rectangle to set the service area bbox. Values will sync into the fields above.
+              </div>
+            </div>
+            <div className="mt-2 rounded-xl overflow-hidden border bg-white">
+              <AdminServiceAreaMap
+                initialBBox={bbox}
+                onBBoxChange={(b) => {
+                  setMinLat(b.minLat.toFixed(6));
+                  setMinLng(b.minLng.toFixed(6));
+                  setMaxLat(b.maxLat.toFixed(6));
+                  setMaxLng(b.maxLng.toFixed(6));
+                }}
+              />
+            </div>
+          </div>
 
           <label className="text-sm md:col-span-2">
             Pricing config (optional)
@@ -193,7 +285,21 @@ export default function AdminServiceAreasPage() {
                   p_surge_reason: surgeReason.trim() === '' ? null : surgeReason.trim(),
                 });
                 if (error) throw error;
-                setToast(`Saved. id=${data}`);
+                const newId = Array.isArray(data) && data.length > 0 ? (data[0] as any).id : undefined;
+
+                // Apply dispatch settings (match radius + location staleness window)
+                if (newId) {
+                  const radius = Math.trunc(Number(matchRadiusM));
+                  const stale = Math.trunc(Number(driverLocStaleAfterS));
+                  const { error: dError } = await supabase.rpc('admin_update_service_area_dispatch_settings_v1', {
+                    p_service_area_id: newId,
+                    p_match_radius_m: radius,
+                    p_driver_loc_stale_after_seconds: stale,
+                  });
+                  if (dError) throw dError;
+                }
+
+                setToast(newId ? `Saved. id=${newId}` : 'Saved.');
                 qc.invalidateQueries({ queryKey: ['admin_service_areas'] });
               } catch (e: unknown) {
                 setToast(`Error: ${errorText(e)}`);
@@ -221,10 +327,66 @@ export default function AdminServiceAreasPage() {
               setMinBaseFare('');
               setSurgeMultiplier('1.0');
               setSurgeReason('');
+              setMatchRadiusM('5000');
+              setDriverLocStaleAfterS('120');
             }}
           >
             Reset
           </button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Dispatch matching settings</div>
+            <div className="text-xs text-gray-500">
+              These settings control how the server filters nearby drivers when matching (radius + driver location freshness).
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field
+            label="Match radius (meters)"
+            value={matchRadiusM}
+            onChange={setMatchRadiusM}
+            placeholder="5000"
+            help="Used by matching. Typical: 3000–8000 (city), 10000+ (suburbs)."
+          />
+          <Field
+            label="Driver location stale window (seconds)"
+            value={driverLocStaleAfterS}
+            onChange={setDriverLocStaleAfterS}
+            placeholder="120"
+            help="Driver must have a location updated within this window. Keep >= your driver heartbeat interval."
+          />
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Nearby drivers preview (debug)</div>
+            <div className="text-xs text-gray-500">
+              Click on the map to set a center point, then refresh.
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button className="btn" disabled={previewBusy} onClick={() => refreshPreview(previewCenter)}>
+              Refresh drivers
+            </button>
+            <div className="text-xs text-gray-500">{previewDrivers.length} driver(s)</div>
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <AdminDriversPreviewMap
+            center={previewCenter}
+            bbox={{ minLat, minLng, maxLat, maxLng }}
+            radiusM={Number(matchRadiusM) || 0}
+            drivers={previewDrivers}
+            onCenterChange={setPreviewCenter}
+          />
         </div>
       </div>
 
@@ -327,6 +489,71 @@ export default function AdminServiceAreasPage() {
                       }}
                     />
                   </label>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-3 items-end">
+                  <label className="text-xs text-gray-600">
+                    Match radius (meters)
+                    <input
+                      className="mt-1 w-40 rounded-md border px-2 py-1 text-sm"
+                      type="number"
+                      min="500"
+                      max="30000"
+                      value={dispatchDraftById[a.id]?.radius_m ?? String(a.match_radius_m ?? 5000)}
+                      onChange={(e) =>
+                        setDispatchDraftById((prev) => ({
+                          ...prev,
+                          [a.id]: {
+                            ...(prev[a.id] ?? { radius_m: String(a.match_radius_m ?? 5000), stale_after_s: String(a.driver_loc_stale_after_seconds ?? 120) }),
+                            radius_m: e.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label className="text-xs text-gray-600">
+                    Driver location stale window (seconds)
+                    <input
+                      className="mt-1 w-56 rounded-md border px-2 py-1 text-sm"
+                      type="number"
+                      min="10"
+                      max="900"
+                      value={dispatchDraftById[a.id]?.stale_after_s ?? String(a.driver_loc_stale_after_seconds ?? 120)}
+                      onChange={(e) =>
+                        setDispatchDraftById((prev) => ({
+                          ...prev,
+                          [a.id]: {
+                            ...(prev[a.id] ?? { radius_m: String(a.match_radius_m ?? 5000), stale_after_s: String(a.driver_loc_stale_after_seconds ?? 120) }),
+                            stale_after_s: e.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <button
+                    className="btn"
+                    onClick={async () => {
+                      setToast(null);
+                      try {
+                        const radius = Number(dispatchDraftById[a.id]?.radius_m ?? a.match_radius_m ?? 5000);
+                        const stale = Number(dispatchDraftById[a.id]?.stale_after_s ?? a.driver_loc_stale_after_seconds ?? 120);
+                        const { error } = await supabase.rpc('admin_update_service_area_dispatch_settings_v1', {
+                          p_service_area_id: a.id,
+                          p_match_radius_m: radius,
+                          p_driver_loc_stale_after_seconds: stale,
+                        });
+                        if (error) throw error;
+                        qc.invalidateQueries({ queryKey: ['admin_service_areas'] });
+                        setToast('Updated dispatch settings');
+                      } catch (err: unknown) {
+                        setToast(`Error: ${errorText(err)}`);
+                      }
+                    }}
+                  >
+                    Update dispatch settings
+                  </button>
                 </div>
               </div>
 
