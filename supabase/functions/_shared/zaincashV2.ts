@@ -400,3 +400,78 @@ export async function zaincashV2InitPayment(
 export async function zaincashV2BuildInquiryUrl(cfg: ZaincashV2Config, transactionId: string) {
   return cfg.baseUrl + ZAINCASH_V2_INQUIRY_PREFIX + transactionId;
 }
+
+export type ZaincashV2InquiryOut = {
+  /** Raw provider status (e.g. SUCCESS, FAILED, OTP_SENT). Empty string if the provider did not return one. */
+  status: string;
+  /** Full provider response body (JSON parsed when possible). */
+  raw: unknown;
+};
+
+function coerceStatus(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return '';
+}
+
+function looksLikeStatusKey(key: string): boolean {
+  const k = normKey(key);
+  // Prefer the explicit variants and avoid common false positives.
+  if (k.includes('statuscode') || k.includes('httpstatus') || k.includes('statusdescription')) return false;
+  return k.includes('currentstatus') || k.includes('transactionstatus') || k === 'status' || k.endsWith('status');
+}
+
+/**
+ * Inquiry a ZainCash v2 transaction by transactionId.
+ * Uses OAuth2 client_credentials (same as init) and returns the provider status + raw body.
+ */
+export async function zaincashV2Inquiry(
+  cfg: ZaincashV2Config,
+  transactionId: string,
+): Promise<ZaincashV2InquiryOut> {
+  const tx = normalizeUuid(transactionId);
+  if (!tx) throw new Error('Invalid transactionId');
+
+  const token = await getAccessToken(cfg);
+  const url = cfg.baseUrl + ZAINCASH_V2_INQUIRY_PREFIX + encodeURIComponent(tx);
+
+  const out = await fetchJson(url, {
+    method: 'GET',
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: 'application/json',
+    },
+  });
+
+  const raw: any = out.data;
+
+  // Try the most likely locations first.
+  let status =
+    coerceStatus(
+      raw?.currentStatus ??
+        raw?.current_status ??
+        raw?.transactionStatus ??
+        raw?.transaction_status ??
+        raw?.status ??
+        raw?.data?.currentStatus ??
+        raw?.data?.current_status ??
+        raw?.data?.transactionStatus ??
+        raw?.data?.transaction_status ??
+        raw?.data?.status ??
+        raw?.result?.currentStatus ??
+        raw?.result?.transactionStatus ??
+        raw?.result?.status ??
+        raw?.transaction?.currentStatus ??
+        raw?.transaction?.transactionStatus ??
+        raw?.transaction?.status,
+    ) || '';
+
+  // Fallback: deep scan for a "status"-like key.
+  if (!status) {
+    const found = deepFind(raw, (k, v) => looksLikeStatusKey(k) && typeof v !== 'object' && v != null);
+    if (found) status = coerceStatus(found.value);
+  }
+
+  return { status, raw };
+}
