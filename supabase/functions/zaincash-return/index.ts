@@ -19,10 +19,22 @@ function mapStatus(s: string) {
   return 'pending' as const;
 }
 
-function pickFirstString(obj: any, keys: string[]): string {
-  for (const k of keys) {
-    const v = obj?.[k];
-    if (typeof v === 'string' && v.trim()) return v.trim();
+function pickFirstStringDeep(obj: any, paths: string[]): string {
+  for (const p of paths) {
+    if (!p) continue;
+
+    // Support dot-paths (e.g. "data.orderId").
+    const segs = p.split('.').filter(Boolean);
+    let cur: any = obj;
+    for (const s of segs) {
+      if (cur && typeof cur === 'object' && s in cur) cur = cur[s];
+      else {
+        cur = undefined;
+        break;
+      }
+    }
+
+    if (typeof cur === 'string' && cur.trim()) return cur.trim();
   }
   return '';
 }
@@ -95,9 +107,50 @@ Deno.serve(async (req) => {
     if (!payload) return errorJson('Invalid token', 400, 'INVALID_TOKEN');
 
     // Try to extract intentId (externalReferenceId/orderId) and transactionId from token.
-    const tokenExternalRef = pickFirstString(payload, ['externalReferenceId', 'external_reference_id', 'external_ref', 'externalRef', 'ref']);
-    const tokenOrderId = pickFirstString(payload, ['orderId', 'orderid', 'order_id']);
-    const tokenTxId = pickFirstString(payload, ['transactionId', 'transaction_id', 'txId', 'tx_id', 'id']);
+    // ZainCash status-change redirect/webhook tokens can carry these identifiers either
+    // at the top-level or nested under a "data" object (e.g. data.orderId).
+    const tokenExternalRef = pickFirstStringDeep(payload, [
+      // common
+      'externalReferenceId',
+      'external_reference_id',
+      'externalRef',
+      'external_ref',
+      'ref',
+      // nested
+      'data.externalReferenceId',
+      'data.external_reference_id',
+      // sometimes orderId is the only stable UUID you control
+      'data.orderId',
+      'data.order_id',
+    ]);
+
+    const tokenOrderId = pickFirstStringDeep(payload, [
+      'orderId',
+      'orderid',
+      'order_id',
+      'data.orderId',
+      'data.order_id',
+      'transactionDetails.orderId',
+      'data.transactionDetails.orderId',
+      'init.transactionDetails.orderId',
+    ]);
+
+    const tokenTxId = pickFirstStringDeep(payload, [
+      'transactionId',
+      'transaction_id',
+      'txId',
+      'tx_id',
+      'id',
+      // nested
+      'data.transactionId',
+      'data.transaction_id',
+      // ZainCash status-change tokens often include this and it may match transactionId
+      'data.merchantReferenceId',
+      'data.merchantReferenceID',
+      'transactionDetails.transactionId',
+      'data.transactionDetails.transactionId',
+      'init.transactionDetails.transactionId',
+    ]);
 
     const intentId =
       (intentIdQ && isUuid(intentIdQ) ? intentIdQ : '') ||
@@ -107,7 +160,17 @@ Deno.serve(async (req) => {
     if (!intentId) return errorJson('Invalid intentId', 400, 'VALIDATION_ERROR');
 
     // Prefer inquiry response as the source of truth if we have a transaction id.
-    let finalStatus = pickFirstString(payload, ['status', 'transactionStatus', 'transaction_status', 'result']).toLowerCase();
+    let finalStatus = pickFirstStringDeep(payload, [
+      'status',
+      'transactionStatus',
+      'transaction_status',
+      'result',
+      // nested
+      'data.currentStatus',
+      'data.status',
+      'data.transactionStatus',
+      'data.transaction_status',
+    ]).toLowerCase();
     let inquiryRaw: any = null;
 
     if (tokenTxId) {
