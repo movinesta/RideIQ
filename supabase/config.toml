@@ -42,6 +42,9 @@ verify_jwt = false
 [functions.topup-create]
 verify_jwt = false
 
+[functions.topup-check]
+verify_jwt = false
+
 [functions.match-ride]
 verify_jwt = false
 
