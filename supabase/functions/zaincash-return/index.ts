@@ -67,20 +67,32 @@ if (!token) return errorJson('Missing token', 400, 'VALIDATION_ERROR');
     const payload = await verifyJwtHS256(token, cfg.apiKey).catch(() => null);
     if (!payload) return errorJson('Invalid token', 400, 'INVALID_TOKEN');
 
-    // Try to extract intentId (externalReferenceId/orderId) and transactionId from token.
-    const tokenExternalRef = pickFirstString(payload, ['externalReferenceId', 'external_reference_id', 'external_ref', 'externalRef', 'ref']);
-    const tokenOrderId = pickFirstString(payload, ['orderId', 'orderid', 'order_id']);
-    const tokenTxId = pickFirstString(payload, ['transactionId', 'transaction_id', 'txId', 'tx_id', 'id']);
+    // Try to extract intentId from the token.
+// ZainCash v2 token payload is commonly shaped as:
+//   { eventId, data: { orderId, externalReferenceId, transactionId, currentStatus, ... }, eventType }
+const tokenData: any = (payload as any)?.data ?? payload ?? {};
 
-    const intentId =
-      (intentIdQ && isUuid(intentIdQ) ? intentIdQ : '') ||
-      (tokenExternalRef && isUuid(tokenExternalRef) ? tokenExternalRef : '') ||
-      (tokenOrderId && isUuid(tokenOrderId) ? tokenOrderId : '');
+const tokenExternalRef = pickFirstString(tokenData, [
+  'externalReferenceId',
+  'external_reference_id',
+  'externalReference',
+]);
+const tokenOrderId = pickFirstString(tokenData, ['orderId', 'order_id']);
+const intentIdFromToken = tokenOrderId || tokenExternalRef;
 
-    if (!intentId) return errorJson('Invalid intentId', 400, 'VALIDATION_ERROR');
+// Prefer token-derived intentId, fall back to query param for backwards compatibility.
+const intentId = intentIdFromToken || intentIdQ;
+if (!intentId) {
+  return errorJson('Missing intentId (and token did not include orderId/externalReferenceId).', 400, 'VALIDATION_ERROR');
+}
 
-    // Prefer inquiry response as the source of truth if we have a transaction id.
-    let finalStatus = pickFirstString(payload, ['status', 'transactionStatus', 'transaction_status', 'result']).toLowerCase();
+const tokenTxId =
+  pickFirstString(tokenData, ['transactionId', 'transaction_id', 'id']) ||
+  pickFirstString(tokenData?.transactionDetails, ['transactionId', 'transaction_id', 'id']) ||
+  pickFirstString(tokenData?.transaction_details, ['transactionId', 'transaction_id', 'id']);
+
+// Prefer inquiry response as the source of truth if we have a transaction id.
+    let finalStatus = pickFirstString(tokenData, ['currentStatus', 'status', 'transactionStatus', 'transaction_status', 'paymentStatus', 'result']).toLowerCase();
     let inquiryRaw: any = null;
 
     if (tokenTxId) {

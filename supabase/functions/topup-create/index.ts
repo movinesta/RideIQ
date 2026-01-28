@@ -134,68 +134,122 @@ Deno.serve(async (req) => {
     const providerKind = String((provider as any).kind ?? '').toLowerCase();
 
     // Provider-specific init.
-    if (providerKind === 'zaincash') {
-      // ZainCash amount is IQD integer, min 250.
-      if (amountIqd < 250) return errorJson('Minimum top-up is 250 IQD.', 400, 'VALIDATION_ERROR');
+    
+// Provider-specific init.
+if (providerKind === 'zaincash') {
+  // ZainCash amount is IQD integer, min 250.
+  if (amountIqd < 250) return errorJson('Minimum top-up is 250 IQD.', 400, 'VALIDATION_ERROR');
 
-      let cfg;
-      try {
-        cfg = getZaincashV2Config();
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return errorJson(`ZainCash v2 is not configured: ${msg}`, 500, 'MISCONFIGURED');
-      }
+  let cfg;
+  try {
+    cfg = getZaincashV2Config();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return errorJson(`ZainCash v2 is not configured: ${msg}`, 500, 'MISCONFIGURED');
+  }
 
-      const base = SUPABASE_URL.replace(/\/$/, '');
+  const base = SUPABASE_URL.replace(/\/$/, '');
 
-      // ZainCash appends `?token=...` to the return URL even if you provide a URL that already has query params.
-      // If you add your own query (e.g. `?intentId=...&result=success`), the provider may produce an invalid URL like:
-      //   ...&result=success?token=...
-      // So the return URL MUST NOT contain any query params.
-      const returnUrl = `${base}/functions/v1/zaincash-return`;
-      const successUrl = returnUrl;
-      const failureUrl = returnUrl;
+  // IMPORTANT:
+  // ZainCash appends `?token=...` to the return URL. If your return URL already has query params,
+  // it may produce an invalid URL like `...&x=y?token=...`.
+  // Therefore, the return URL MUST NOT contain any query params.
+  const returnUrl = `${base}/functions/v1/zaincash-return`;
 
-const { transactionId, redirectUrl, raw } = await zaincashV2InitPayment(cfg, {
-        // Use intentId as a UUID externalReferenceId (idempotency key)
-        externalReferenceId: intentId,
-        orderId: intentId,
-        amountIQD: Math.trunc(amountIqd),
-        // Optional: you can pass user phone if you have it; we keep it unset here.
-        customerPhone: null,
-        successUrl: successUrl.toString(),
-        failureUrl: failureUrl.toString(),
-      });
+  const initRequest = {
+    externalReferenceId: intentId,
+    orderId: intentId,
+    amountIQD: Math.trunc(amountIqd),
+    customerPhone: null as string | null,
+    successUrl: returnUrl,
+    failureUrl: returnUrl,
+  };
 
-      await service
-        .from('topup_intents')
-        .update({
-          status: 'pending',
-          provider_tx_id: transactionId,
-          provider_payload: { init: raw, external_reference_id: intentId },
-        })
-        .eq('id', intentId);
+  let init;
+  try {
+    init = await zaincashV2InitPayment(cfg, initRequest);
+  } catch (e) {
+    const err = e as any;
+    const status = typeof err?.status === 'number' ? err.status : 502;
+    const body = err?.body ?? null;
+    const message = e instanceof Error ? e.message : String(e);
 
-      await logAppEvent({
-        event_type: 'topup_intent_created',
-        actor_id: user.id,
-        actor_type: 'rider',
-        payload: { intent_id: intentId, provider: 'zaincash', provider_tx_id: transactionId, amount: amountIqd },
-      });
+    // Try to surface the provider's "msg" when it returns HTTP 200 with an error payload.
+    const providerMsg =
+      (typeof body?.err?.msg === 'string' && body.err.msg.trim()) ||
+      (typeof body?.message === 'string' && body.message.trim()) ||
+      (typeof body?.error === 'string' && body.error.trim()) ||
+      message;
 
-      return json({
-        ok: true,
+    await service
+      .from('topup_intents')
+      .update({
+        status: 'failed',
+        failure_reason: 'provider_init_failed',
+        provider_payload: {
+          preset_id: presetId,
+          error: { message, status, body },
+          request: initRequest,
+          external_reference_id: intentId,
+        },
+      })
+      .eq('id', intentId);
+
+    await logAppEvent({
+      event_type: 'topup_provider_init_failed',
+      actor_id: user.id,
+      actor_type: 'rider',
+      payload: {
         intent_id: intentId,
-        provider_tx_id: transactionId,
-        redirect_url: redirectUrl,
-        rate_limit: { remaining: rl.remaining, reset_at: rl.resetAt },
-      });
-    }
+        provider: 'zaincash',
+        status,
+        provider_message: providerMsg,
+      },
+    });
 
+    return json(
+      {
+        error: 'Failed to initialize ZainCash payment.',
+        code: 'PROVIDER_ERROR',
+        provider_message: providerMsg,
+      },
+      502,
+    );
+  }
 
+  const { transactionId, redirectUrl, raw } = init;
 
+  await service
+    .from('topup_intents')
+    .update({
+      status: 'pending',
+      provider_tx_id: transactionId,
+      provider_payload: {
+        preset_id: presetId,
+        init: raw,
+        request: initRequest,
+        external_reference_id: intentId,
+      },
+    })
+    .eq('id', intentId);
 
-    if (providerKind === 'asiapay') {
+  await logAppEvent({
+    event_type: 'topup_intent_created',
+    actor_id: user.id,
+    actor_type: 'rider',
+    payload: { intent_id: intentId, provider: 'zaincash', provider_tx_id: transactionId, amount: amountIqd },
+  });
+
+  return json({
+    ok: true,
+    intent_id: intentId,
+    provider_tx_id: transactionId,
+    redirect_url: redirectUrl,
+    rate_limit: { remaining: rl.remaining, reset_at: rl.resetAt },
+  });
+}
+
+if (providerKind === 'asiapay') {
       // Provider settings are stored as Edge Function secrets (env vars), not DB rows.
       const paymentUrl = envTrim('ASIAPAY_PAYMENT_URL');
       const merchantId = envTrim('ASIAPAY_MERCHANT_ID');

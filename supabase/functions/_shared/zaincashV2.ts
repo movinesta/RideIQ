@@ -101,7 +101,39 @@ export type ZaincashV2InitInput = {
   failureUrl: string;
 };
 
-export async function zaincashV2InitPayment(cfg: ZaincashV2Config, input: ZaincashV2InitInput): Promise<{ transactionId: string; redirectUrl: string; raw: any }> {
+function isObjectLike(v: unknown): v is Record<string, any> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function pickFirstString(obj: unknown, keys: string[]): string {
+  if (!isObjectLike(obj)) return '';
+  for (const k of keys) {
+    const v = (obj as any)[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return '';
+}
+
+function extractProviderMessage(data: any): string {
+  const direct =
+    (typeof data?.message === 'string' && data.message.trim()) ? data.message.trim()
+      : (typeof data?.error_description === 'string' && data.error_description.trim()) ? data.error_description.trim()
+        : (typeof data?.error === 'string' && data.error.trim()) ? data.error.trim()
+          : '';
+
+  if (direct) return direct;
+
+  if (isObjectLike(data?.err) && typeof (data.err as any).msg === 'string') return String((data.err as any).msg);
+  if (isObjectLike(data?.error) && typeof (data.error as any).message === 'string') return String((data.error as any).message);
+  if (isObjectLike(data?.errors) && typeof (data.errors as any).message === 'string') return String((data.errors as any).message);
+
+  return '';
+}
+
+export async function zaincashV2InitPayment(
+  cfg: ZaincashV2Config,
+  input: ZaincashV2InitInput,
+): Promise<{ transactionId: string; redirectUrl: string; raw: any }> {
   const token = await zaincashV2GetAccessToken(cfg);
 
   const payload: any = {
@@ -125,15 +157,35 @@ export async function zaincashV2InitPayment(cfg: ZaincashV2Config, input: Zainca
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      Accept: 'application/json',
     },
     body: JSON.stringify(payload),
   });
 
-  const transactionId = String(data.transactionId || data.transaction_id || data.id || '').trim();
-  const redirectUrl = String(data.redirectUrl || data.redirect_url || data.paymentUrl || data.url || '').trim();
+  // ZainCash v2 responses may return transactionId at the top-level, or nested under transactionDetails.
+  const transactionId =
+    pickFirstString(data, ['transactionId', 'transaction_id', 'id']) ||
+    pickFirstString((data as any)?.transactionDetails, ['transactionId', 'transaction_id', 'id']) ||
+    pickFirstString((data as any)?.transaction_details, ['transactionId', 'transaction_id', 'id']) ||
+    pickFirstString((data as any)?.transaction, ['transactionId', 'transaction_id', 'id']) ||
+    pickFirstString((data as any)?.data, ['transactionId', 'transaction_id', 'id']) ||
+    pickFirstString((data as any)?.data?.transactionDetails, ['transactionId', 'transaction_id', 'id']);
+
+  const redirectUrl =
+    pickFirstString(data, ['redirectUrl', 'redirect_url', 'paymentUrl', 'url']) ||
+    pickFirstString((data as any)?.redirectUrls, ['redirectUrl', 'redirect_url', 'url']) ||
+    pickFirstString((data as any)?.data, ['redirectUrl', 'redirect_url', 'paymentUrl', 'url']);
 
   if (!transactionId || !redirectUrl) {
-    throw new Error('Unexpected init response (missing transactionId/redirectUrl)');
+    const keys = isObjectLike(data) ? Object.keys(data).join(',') : typeof data;
+    const providerMsg = extractProviderMessage(data);
+    const msg =
+      `Unexpected init response (missing transactionId/redirectUrl). keys=[${keys}]` +
+      (providerMsg ? ` provider=${providerMsg}` : '');
+    const err = new Error(msg);
+    (err as any).status = 502;
+    (err as any).body = data;
+    throw err;
   }
 
   return { transactionId, redirectUrl, raw: data };
