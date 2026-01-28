@@ -31,6 +31,7 @@ export type MerchantPromotion = {
   id: string;
   merchant_id: string;
   product_id: string | null;
+  category: string | null;
   discount_type: 'percent' | 'fixed_iqd';
   value: number;
   starts_at: string | null;

@@ -15,11 +15,13 @@ export default function RoleSwitcher() {
   });
 
   if (ctxQ.isLoading || ctxQ.isError) return null;
-  if (!ctxQ.data.role_onboarding_completed) return null;
+  const ctx = ctxQ.data;
+  if (!ctx) return null;
+  if (!ctx.role_onboarding_completed) return null;
 
-  const active = ctxQ.data.active_role;
-  const hasDriver = ctxQ.data.has_driver;
-  const hasMerchant = ctxQ.data.has_merchant;
+  const active = ctx.active_role;
+  const hasDriver = ctx.has_driver;
+  const hasMerchant = ctx.has_merchant;
 
   const onChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = e.target.value as 'rider' | 'driver' | 'merchant';

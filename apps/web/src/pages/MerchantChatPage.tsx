@@ -7,6 +7,8 @@ import { fetchPublicProfiles, listChatMessagesKeyset, merchantChatMarkRead, send
 
 const PAGE_SIZE = 50;
 
+type ChatPage = { rows: any[]; nextCursor: ChatMessageCursor | null };
+
 export default function MerchantChatPage() {
   const { threadId } = useParams();
   const id = threadId as string;
@@ -16,9 +18,9 @@ export default function MerchantChatPage() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const markReadTimer = useRef<number | null>(null);
 
-  const msgsQ = useInfiniteQuery({
-    queryKey: ['merchant-chat-messages', id],
-    queryFn: ({ pageParam }) => listChatMessagesKeyset(id, (pageParam as ChatMessageCursor | null) ?? null, PAGE_SIZE),
+  const msgsQ = useInfiniteQuery<ChatPage, Error, ChatPage, readonly [string, string], ChatMessageCursor | null>({
+    queryKey: ['merchant-chat-messages', id] as const,
+    queryFn: ({ pageParam }) => listChatMessagesKeyset(id, pageParam, PAGE_SIZE),
     initialPageParam: null,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: Boolean(id),
@@ -30,7 +32,7 @@ export default function MerchantChatPage() {
     return pages
       .slice()
       .reverse()
-      .flatMap((p) => (p.rows ?? []).slice().reverse());
+      .flatMap((page) => (page.rows ?? []).slice().reverse());
   }, [msgsQ.data?.pages]);
 
   const profilesQ = useQuery({

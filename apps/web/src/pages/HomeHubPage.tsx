@@ -46,6 +46,7 @@ export default function HomeHubPage() {
   if (ctxQ.isError) return <div className="p-6 text-red-600">{t('common.error')}</div>;
 
   const ctx = ctxQ.data;
+  if (!ctx) return <div className="p-6 text-red-600">{t('common.error')}</div>;
 
   const driverDest = ctx.has_driver ? '/driver' : '/onboarding/driver';
   const merchantDest = ctx.has_merchant ? '/merchant' : '/onboarding/merchant';
