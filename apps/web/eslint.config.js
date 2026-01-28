@@ -18,7 +18,10 @@ export default [
       ecmaVersion: 2022,
       sourceType: 'module',
       parserOptions: { ecmaFeatures: { jsx: true } },
-      globals: globals.browser,
+      globals: {
+        ...globals.browser,
+        google: 'readonly',
+      },
     },
     plugins: {
       '@typescript-eslint': tsPlugin,

@@ -83,8 +83,8 @@ export default function AdminServiceAreasPage() {
   }, [minLat, minLng, maxLat, maxLng]);
   const [pricingConfigId, setPricingConfigId] = React.useState<string>('');
   const [minBaseFare, setMinBaseFare] = React.useState<string>('');
-	const [surgeMultiplier, setSurgeMultiplier] = React.useState<string>('1.00');
-	const [surgeReason, setSurgeReason] = React.useState<string>('');
+  const [surgeMultiplier, setSurgeMultiplier] = React.useState<string>('1.00');
+  const [surgeReason, setSurgeReason] = React.useState<string>('');
 
   // Dispatch matching settings (stored on service_areas)
   const [matchRadiusM, setMatchRadiusM] = React.useState<string>('5000');
@@ -98,9 +98,14 @@ export default function AdminServiceAreasPage() {
   const [previewDrivers, setPreviewDrivers] = React.useState<NearbyDriverPoint[]>([]);
   const [previewBusy, setPreviewBusy] = React.useState(false);
 
-  const [dispatchDraftById, setDispatchDraftById] = React.useState<
-    Record<string, { radius_m: string; stale_after_seconds: string }>
-  >({});
+  const [dispatchDraftById, setDispatchDraftById] = React.useState<Record<string, { radius_m: string; stale_after_seconds: string }>>({});
+
+  const toastError = React.useCallback(
+    (e: unknown, prefix: string) => {
+      setToast(`${prefix}: ${errorText(e)}`);
+    },
+    [setToast],
+  );
 
   React.useEffect(() => {
     let alive = true;
@@ -157,7 +162,7 @@ export default function AdminServiceAreasPage() {
     } finally {
       setPreviewBusy(false);
     }
-  }, [matchRadiusM, driverLocStaleAfterS, previewCenter.lat, previewCenter.lng]);
+  }, [matchRadiusM, driverLocStaleAfterS, previewCenter.lat, previewCenter.lng, toastError]);
 
   if (isAdmin === false) {
     return <div className="rounded-2xl border border-gray-200 bg-white p-6">Not authorized.</div>;
@@ -372,7 +377,7 @@ export default function AdminServiceAreasPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <button className="btn" disabled={previewBusy} onClick={() => refreshPreview(previewCenter)}>
+            <button className="btn" disabled={previewBusy} onClick={() => refreshPreview()}>
               Refresh drivers
             </button>
             <div className="text-xs text-gray-500">{previewDrivers.length} driver(s)</div>
@@ -382,8 +387,8 @@ export default function AdminServiceAreasPage() {
         <div className="mt-3">
           <AdminDriversPreviewMap
             center={previewCenter}
-            bbox={{ minLat, minLng, maxLat, maxLng }}
-            radiusM={Number(matchRadiusM) || 0}
+            bbox={bbox}
+            radius_m={Number(matchRadiusM) || 0}
             drivers={previewDrivers}
             onCenterChange={setPreviewCenter}
           />
@@ -504,7 +509,7 @@ export default function AdminServiceAreasPage() {
                         setDispatchDraftById((prev) => ({
                           ...prev,
                           [a.id]: {
-                            ...(prev[a.id] ?? { radius_m: String(a.match_radius_m ?? 5000), stale_after_s: String(a.driver_loc_stale_after_seconds ?? 120) }),
+                            ...(prev[a.id] ?? { radius_m: String(a.match_radius_m ?? 5000), stale_after_seconds: String(a.driver_loc_stale_after_seconds ?? 120) }),
                             radius_m: e.target.value,
                           },
                         }))
@@ -519,13 +524,13 @@ export default function AdminServiceAreasPage() {
                       type="number"
                       min="10"
                       max="900"
-                      value={dispatchDraftById[a.id]?.stale_after_s ?? String(a.driver_loc_stale_after_seconds ?? 120)}
+                      value={dispatchDraftById[a.id]?.stale_after_seconds ?? String(a.driver_loc_stale_after_seconds ?? 120)}
                       onChange={(e) =>
                         setDispatchDraftById((prev) => ({
                           ...prev,
                           [a.id]: {
-                            ...(prev[a.id] ?? { radius_m: String(a.match_radius_m ?? 5000), stale_after_s: String(a.driver_loc_stale_after_seconds ?? 120) }),
-                            stale_after_s: e.target.value,
+                            ...(prev[a.id] ?? { radius_m: String(a.match_radius_m ?? 5000), stale_after_seconds: String(a.driver_loc_stale_after_seconds ?? 120) }),
+                            stale_after_seconds: e.target.value,
                           },
                         }))
                       }
@@ -538,7 +543,7 @@ export default function AdminServiceAreasPage() {
                       setToast(null);
                       try {
                         const radius = Number(dispatchDraftById[a.id]?.radius_m ?? a.match_radius_m ?? 5000);
-                        const stale = Number(dispatchDraftById[a.id]?.stale_after_s ?? a.driver_loc_stale_after_seconds ?? 120);
+                        const stale = Number(dispatchDraftById[a.id]?.stale_after_seconds ?? a.driver_loc_stale_after_seconds ?? 120);
                         const { error } = await supabase.rpc('admin_update_service_area_dispatch_settings_v1', {
                           p_service_area_id: a.id,
                           p_match_radius_m: radius,
@@ -618,11 +623,29 @@ export default function AdminServiceAreasPage() {
   );
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  help,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  help?: string;
+}) {
   return (
     <label className="text-sm">
       {label}
-      <input className="mt-1 w-full rounded-md border px-3 py-2" value={value} onChange={(e) => onChange(e.target.value)} />
+      <input
+        className="mt-1 w-full rounded-md border px-3 py-2"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {help ? <div className="mt-1 text-xs text-gray-500">{help}</div> : null}
     </label>
   );
 }
