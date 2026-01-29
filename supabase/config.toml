@@ -39,6 +39,9 @@ enable_signup = true
 [functions.zaincash-return]
 verify_jwt = false
 
+[functions.ridecheck-respond]
+verify_jwt = false
+
 [functions.safety-sos]
 verify_jwt = false
 
