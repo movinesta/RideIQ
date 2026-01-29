@@ -215,23 +215,23 @@ export default function RiderPage() {
       }
     },
     [mapPickMode],
-
-// Sync the map preview inputs with an existing ride request (so "Nearby drivers" matches what you are about to dispatch).
-const setPickupFromRequest = React.useCallback((rr: RideRequestRow) => {
-  if (typeof rr?.pickup_lat === 'number' && typeof rr?.pickup_lng === 'number') {
-    setPickupLat(String(rr.pickup_lat));
-    setPickupLng(String(rr.pickup_lng));
-  }
-  if (typeof rr?.dropoff_lat === 'number' && typeof rr?.dropoff_lng === 'number') {
-    setDropoffLat(String(rr.dropoff_lat));
-    setDropoffLng(String(rr.dropoff_lng));
-  }
-  if (typeof rr?.pickup_address === 'string') setPickupAddress(rr.pickup_address);
-  if (typeof rr?.dropoff_address === 'string') setDropoffAddress(rr.dropoff_address);
-  setMapPickMode('pickup');
-}, []);
-
   );
+
+  // Sync the map preview inputs with an existing ride request (so "Nearby drivers" matches what you are about to dispatch).
+  const setPickupFromRequest = React.useCallback((rr: RideRequestRow) => {
+    if (typeof rr?.pickup_lat === 'number' && typeof rr?.pickup_lng === 'number') {
+      setPickupLat(String(rr.pickup_lat));
+      setPickupLng(String(rr.pickup_lng));
+    }
+    if (typeof rr?.dropoff_lat === 'number' && typeof rr?.dropoff_lng === 'number') {
+      setDropoffLat(String(rr.dropoff_lat));
+      setDropoffLng(String(rr.dropoff_lng));
+    }
+    if (typeof rr?.pickup_address === 'string') setPickupAddress(rr.pickup_address);
+    if (typeof rr?.dropoff_address === 'string') setDropoffAddress(rr.dropoff_address);
+    setMapPickMode('pickup');
+  }, []);
+
 
   const [serviceArea, setServiceArea] = React.useState<{ id: string; name: string } | null>(null);
   const [serviceAreaStatus, setServiceAreaStatus] = React.useState<string>('');
