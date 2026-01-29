@@ -30,19 +30,17 @@ serve(async (req) => {
 
   const url = new URL(req.url);
   const token = url.searchParams.get("token")?.trim() ?? "";
-  if (!token || token.length < 16) {
-    return json({ error: "invalid_token" }, 400);
-  }
+  if (!token || token.length < 16) return json({ error: "invalid_token" }, 400);
 
   const supabase = createServiceClient();
 
-  // Support both:
-  // - token (plaintext) => hash it and match token_hash
-  // - token_hash (client mistakenly passes hash) => match token_hash directly
+  // Robust token lookup:
+  // 1) token param is already token_hash
+  // 2) token param is plaintext token -> sha256(token) == token_hash
+  // 3) legacy: token param matches trip_share_tokens.token (if any)
   let share: any = null;
   let token_mode: "hash" | "token" | "legacy_token" = "token";
 
-  // 1) token provided is already token_hash
   {
     const { data, error } = await supabase
       .from("trip_share_tokens")
@@ -55,7 +53,6 @@ serve(async (req) => {
     }
   }
 
-  // 2) normal path: sha256(token) equals token_hash
   if (!share) {
     const tokenHash = await sha256Hex(token);
     const { data, error } = await supabase
@@ -69,7 +66,6 @@ serve(async (req) => {
     }
   }
 
-  // 3) legacy fallback (if any old rows stored plaintext token)
   if (!share) {
     const { data, error } = await supabase
       .from("trip_share_tokens")
@@ -82,23 +78,37 @@ serve(async (req) => {
     }
   }
 
-  if (!share || share.revoked_at) {
-    return json({ error: "not_found" }, 404);
-  }
-  if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) {
-    return json({ error: "expired" }, 410);
-  }
+  if (!share || share.revoked_at) return json({ error: "not_found" }, 404);
+  if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) return json({ error: "expired" }, 410);
 
-  // Fetch minimal, non-sensitive ride data
+  // rides table does NOT have pickup/dropoff; that lives on ride_requests via rides.request_id
   const { data: ride, error: rideErr } = await supabase
     .from("rides")
-    .select("id,status,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,driver_id,vehicle_id,created_at")
+    .select("id,status,request_id,rider_id,driver_id,created_at,started_at,completed_at,fare_amount_iqd,currency,product_code")
     .eq("id", share.ride_id)
     .maybeSingle();
 
   if (rideErr || !ride) {
-    return json({ error: "ride_not_found" }, 404);
+    return json({ error: "ride_not_found", token_mode }, 404);
   }
+
+  const { data: reqRow, error: reqErr } = await supabase
+    .from("ride_requests")
+    .select("id,status,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,pickup_address,dropoff_address,product_code,service_area_id,matched_at,accepted_at")
+    .eq("id", ride.request_id)
+    .maybeSingle();
+
+  // If request row is missing, still return ride basics (do not hard-fail).
+  const request = reqErr || !reqRow ? null : {
+    id: reqRow.id,
+    status: reqRow.status,
+    pickup: { lat: reqRow.pickup_lat, lng: reqRow.pickup_lng, address: reqRow.pickup_address ?? null },
+    dropoff: { lat: reqRow.dropoff_lat, lng: reqRow.dropoff_lng, address: reqRow.dropoff_address ?? null },
+    product_code: reqRow.product_code ?? ride.product_code ?? null,
+    service_area_id: reqRow.service_area_id ?? null,
+    matched_at: reqRow.matched_at ?? null,
+    accepted_at: reqRow.accepted_at ?? null,
+  };
 
   // Latest driver location (optional)
   let location: any = null;
@@ -112,41 +122,46 @@ serve(async (req) => {
     location = loc?.[0] ?? null;
   }
 
-  // Vehicle (optional) - keep it minimal for public sharing
+  // Active vehicle (optional) - minimal public info
   let vehicle: any = null;
-  if (ride.vehicle_id) {
+  if (ride.driver_id) {
     const { data: v } = await supabase
       .from("driver_vehicles")
-      .select("make,model,color,plate_number,vehicle_type")
-      .eq("id", ride.vehicle_id)
-      .maybeSingle();
+      .select("make,model,color,plate_number,vehicle_type,capacity")
+      .eq("driver_id", ride.driver_id)
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(1);
 
-    if (v) {
-      const plate = (v.plate_number ?? "").toString();
+    const vv = v?.[0];
+    if (vv) {
+      const plate = (vv.plate_number ?? "").toString();
       vehicle = {
-        make: v.make ?? null,
-        model: v.model ?? null,
-        color: v.color ?? null,
-        vehicle_type: v.vehicle_type ?? null,
+        make: vv.make ?? null,
+        model: vv.model ?? null,
+        color: vv.color ?? null,
+        vehicle_type: vv.vehicle_type ?? null,
+        capacity: vv.capacity ?? null,
         plate_suffix: plate ? plate.slice(Math.max(0, plate.length - 3)) : null,
       };
     }
   }
 
-  return json(
-    {
-      ok: true,
-      token_mode,
-      ride: {
-        id: ride.id,
-        status: ride.status,
-        pickup: { lat: ride.pickup_lat, lng: ride.pickup_lng },
-        dropoff: { lat: ride.dropoff_lat, lng: ride.dropoff_lng },
-        created_at: ride.created_at,
-      },
-      vehicle,
-      location,
+  return json({
+    ok: true,
+    token_mode,
+    ride: {
+      id: ride.id,
+      status: ride.status,
+      created_at: ride.created_at,
+      started_at: ride.started_at,
+      completed_at: ride.completed_at,
+      fare_amount_iqd: ride.fare_amount_iqd ?? null,
+      currency: ride.currency ?? "IQD",
     },
-    200,
-  );
+    request,
+    driver: ride.driver_id ? { id: ride.driver_id } : null,
+    vehicle,
+    location,
+  }, 200);
 });
