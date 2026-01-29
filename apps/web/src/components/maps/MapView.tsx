@@ -8,6 +8,8 @@ export type MapMarker = {
   position: LatLng;
   label?: string;
   title?: string;
+  /** Optional semantic kind; used for applying default icons (e.g. driver). */
+  kind?: 'driver' | 'pickup' | 'dropoff';
 };
 
 export type MapCircle = {
@@ -24,6 +26,29 @@ type MapViewProps = {
   className?: string;
   onMapClick?: (pos: LatLng) => void;
 };
+
+
+
+// --- Default marker icons ---
+const DRIVER_BLUE_CAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
+  <circle cx="12" cy="12" r="11" fill="white" stroke="#1d4ed8" stroke-width="2"/>
+  <path fill="#1d4ed8" d="M18.92 5.01C18.72 4.42 18.16 4 17.5 4h-11c-.66 0-1.21.42-1.41 1.01L3 11v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 6h10.29l1.04 3H5.81l1.04-3zM19 16H5v-5h14v5zM7.5 14c-.83 0-1.5-.67-1.5-1.5S6.67 11 7.5 11 9 11.67 9 12.5 8.33 14 7.5 14zm9 0c-.83 0-1.5-.67-1.5-1.5S15.67 11 16.5 11 18 11.67 18 12.5 17.33 14 16.5 14z"/>
+</svg>`;
+
+function isDriverMarker(m: MapMarker) {
+  return m.kind === 'driver' || m.id === 'driver' || m.id.startsWith('driver:');
+}
+
+function driverIcon(g: any) {
+  // Use an SVG data URL so we don't depend on external assets.
+  const url = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(DRIVER_BLUE_CAR_SVG)}`;
+  const sizePx = 36;
+  return {
+    url,
+    scaledSize: new g.maps.Size(sizePx, sizePx),
+    anchor: new g.maps.Point(sizePx / 2, sizePx / 2),
+  };
+}
 
 export function MapView({ center, zoom = 13, markers = [], circles = [], className, onMapClick }: MapViewProps) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
@@ -116,16 +141,22 @@ export function MapView({ center, zoom = 13, markers = [], circles = [], classNa
     // Upsert
     for (const m of markers) {
       const existing = current.get(m.id);
+      const driver = isDriverMarker(m);
+      const nextLabel = driver ? null : typeof m.label === 'string' ? m.label : null;
+      const nextIcon = driver ? driverIcon(g) : null;
+
       if (existing) {
         existing.setPosition(m.position);
         if (typeof m.title === 'string') existing.setTitle(m.title);
-        if (typeof m.label === 'string') existing.setLabel(m.label);
+        existing.setLabel(nextLabel);
+        existing.setIcon(nextIcon);
       } else {
         const marker = new g.maps.Marker({
           map,
           position: m.position,
           title: m.title,
-          label: m.label,
+          label: nextLabel ?? undefined,
+          icon: nextIcon ?? undefined,
         });
         current.set(m.id, marker);
       }
