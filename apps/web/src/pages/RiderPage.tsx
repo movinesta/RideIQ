@@ -144,6 +144,7 @@ export default function RiderPage() {
 
   const [pickupAddress, setPickupAddress] = React.useState('Pickup');
   const [dropoffAddress, setDropoffAddress] = React.useState('Dropoff');
+  const [previewRequestId, setPreviewRequestId] = React.useState<string | null>(null);
 
   const pickupAddressRef = React.useRef<HTMLInputElement | null>(null);
   const dropoffAddressRef = React.useRef<HTMLInputElement | null>(null);
@@ -165,16 +166,13 @@ export default function RiderPage() {
   const mapCenter = pickupPos ?? dropoffPos ?? { lat: 33.3152, lng: 44.3661 };
 
   const nearbyDrivers = useQuery({
-    queryKey: ['drivers_nearby', pickupLat, pickupLng, previewRadiusM],
+    queryKey: ['drivers_nearby', previewRequestId, pickupLat, pickupLng, previewRadiusM],
     enabled: Boolean(pickupPos),
     queryFn: async () => {
       if (!pickupPos) return [];
-      const resp = await invokeEdge<{ drivers: Array<any> }>('drivers-nearby', {
-        lat: pickupPos.lat,
-        lng: pickupPos.lng,
-        radius_m: previewRadiusM,
-        stale_seconds: 120,
-      });
+      const resp = await invokeEdge<{ drivers: Array<any> }>('drivers-nearby', previewRequestId
+        ? { request_id: previewRequestId, radius_m: previewRadiusM, stale_seconds: 120 }
+        : { lat: pickupPos.lat, lng: pickupPos.lng, radius_m: previewRadiusM, stale_seconds: 120 });
       return resp.data?.drivers ?? [];
     },
     staleTime: 5_000,
@@ -229,6 +227,7 @@ export default function RiderPage() {
     }
     if (typeof rr?.pickup_address === 'string') setPickupAddress(rr.pickup_address);
     if (typeof rr?.dropoff_address === 'string') setDropoffAddress(rr.dropoff_address);
+    setPreviewRequestId(typeof rr?.id === 'string' ? rr.id : null);
     setMapPickMode('pickup');
   }, []);
 

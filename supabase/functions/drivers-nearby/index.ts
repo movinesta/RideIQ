@@ -11,6 +11,7 @@ import { errorJson, json } from "../_shared/json.ts";
 import { createServiceClient, requireUser } from "../_shared/supabase.ts";
 
 type NearbyDriversBody = {
+  request_id?: string;
   pickup_lat: number;
   pickup_lng: number;
   radius_m?: number;
@@ -26,6 +27,10 @@ function toNumber(v: unknown): number | null {
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
+}
+
+function isUuid(v: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
 
 function hexToBytes(hex: string): Uint8Array {
@@ -99,13 +104,45 @@ Deno.serve(async (req) => {
     return errorJson("Invalid JSON body", 400, "BAD_REQUEST");
   }
 
-  const pickup_lat = toNumber(body?.pickup_lat ?? (body as { lat?: unknown })?.lat);
-  const pickup_lng = toNumber(body?.pickup_lng ?? (body as { lng?: unknown })?.lng);
-  if (pickup_lat === null || pickup_lng === null) {
-    return errorJson("pickup_lat/pickup_lng are required", 400, "BAD_REQUEST");
+  const service = createServiceClient();
+
+const request_id = typeof body?.request_id === "string" ? body.request_id.trim() : "";
+let pickup_source: "coords" | "request" = "coords";
+
+let pickup_lat = toNumber(body?.pickup_lat ?? (body as { lat?: unknown })?.lat);
+let pickup_lng = toNumber(body?.pickup_lng ?? (body as { lng?: unknown })?.lng);
+
+if (request_id) {
+  if (!isUuid(request_id)) {
+    return errorJson("Invalid request_id", 400, "BAD_REQUEST");
   }
 
-  const radius_m = clamp(toNumber(body?.radius_m) ?? 5000, 100, 50000);
+  const { data: rr, error: rrErr } = await service
+    .from("ride_requests")
+    .select("id, rider_id, pickup_lat, pickup_lng")
+    .eq("id", request_id)
+    .maybeSingle();
+
+  if (rrErr) {
+    return errorJson(`Failed to load ride request: ${rrErr.message}`, 500, "DB_ERROR");
+  }
+  if (!rr) {
+    return errorJson("Ride request not found", 404, "NOT_FOUND");
+  }
+  if (String(rr.rider_id ?? "") !== String(user.id)) {
+    return errorJson("Forbidden", 403, "FORBIDDEN");
+  }
+
+  pickup_lat = typeof rr.pickup_lat === "number" ? rr.pickup_lat : null;
+  pickup_lng = typeof rr.pickup_lng === "number" ? rr.pickup_lng : null;
+  pickup_source = "request";
+}
+
+if (pickup_lat === null || pickup_lng === null) {
+  return errorJson("pickup_lat/pickup_lng are required", 400, "BAD_REQUEST");
+}
+
+const radius_m = clamp(toNumber(body?.radius_m) ?? 5000, 100, 50000);
   const limit_n = clamp(Math.trunc(toNumber(body?.limit_n) ?? 25), 1, 200);
   const stale_after_seconds = clamp(
     Math.trunc(
@@ -121,7 +158,6 @@ Deno.serve(async (req) => {
     8,
   );
 
-  const service = createServiceClient();
 
   // 1) Busy drivers (has an active ride)
   const busy = new Set<string>();
@@ -216,6 +252,8 @@ Deno.serve(async (req) => {
     ok: true,
     request: {
       user_id: user.id,
+      request_id: request_id || null,
+      pickup_source,
       pickup_lat,
       pickup_lng,
       radius_m,
