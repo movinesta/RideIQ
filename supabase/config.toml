@@ -29,7 +29,7 @@ uri = "http://host.docker.internal:54321/functions/v1/sms-hook"
 
 
 
-secrets = ["env(SUPABASE_AUTH_HOOK_SECRET)"]
+secrets = "env(SUPABASE_AUTH_HOOK_SECRET)"
 # Edge Functions auth model
 # - Default: verify_jwt = true (Supabase gateway validates the user JWT before executing the function).
 # - Disable verify_jwt ONLY for endpoints that must be callable without a user JWT:
