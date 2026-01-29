@@ -17,8 +17,15 @@ type SendSmsHookEvent = {
 
 function decodeWebhookSecret(secret: string): string {
   const s = secret.trim();
-  return s.startsWith('whsec_') ? s.slice('whsec_'.length) : s;
+
+  // Supabase dashboard/Auth Hooks secrets are typically formatted like: "v1,whsec_<base64_secret>"
+  // standardwebhooks expects the raw base64 secret (no version prefix and no "whsec_" prefix).
+  const withoutVersion = s.startsWith('v1,') ? s.slice('v1,'.length) : s;
+  return withoutVersion.startsWith('whsec_')
+    ? withoutVersion.slice('whsec_'.length)
+    : withoutVersion;
 }
+
 
 function pickHeaders(req: Request): Record<string, string> {
   return {
