@@ -43,6 +43,8 @@ type ShareResponse = {
   error?: string;
 };
 
+const POLL_MS = 10000; // update marker every ~10s without "refreshing" the page
+
 function mapsLink(lat: number, lng: number) {
   return `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}`;
 }
@@ -80,24 +82,35 @@ async function fetchShare(token: string): Promise<ShareResponse> {
   return data;
 }
 
+function sameLocation(a?: ShareResponse['location'] | null, b?: ShareResponse['location'] | null) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.updated_at === b.updated_at && a.lat === b.lat && a.lng === b.lng;
+}
+
 export default function ShareTripPage() {
   const { t } = useTranslation();
   const { token } = useParams();
   const [data, setData] = React.useState<ShareResponse | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  const [initialLoading, setInitialLoading] = React.useState(true);
+  const [updating, setUpdating] = React.useState(false);
+  const [mapCenter, setMapCenter] = React.useState<LatLng | null>(null);
 
+  const tk = (token ?? '').trim();
+
+  // Initial load (one-time)
   React.useEffect(() => {
     let mounted = true;
-    const tk = (token ?? '').trim();
-    if (!tk) {
-      setErr('missing_token');
-      setLoading(false);
-      return;
-    }
 
-    const run = async () => {
-      setLoading(true);
+    const runInitial = async () => {
+      if (!tk) {
+        setErr('missing_token');
+        setInitialLoading(false);
+        return;
+      }
+
+      setInitialLoading(true);
       try {
         const r = await fetchShare(tk);
         if (!mounted) return;
@@ -107,17 +120,78 @@ export default function ShareTripPage() {
         if (!mounted) return;
         setErr(errorText(e));
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) setInitialLoading(false);
       }
     };
 
-    void run();
-    const id = window.setInterval(run, 8000);
+    void runInitial();
+
+    return () => {
+      mounted = false;
+    };
+  }, [tk]);
+
+  // Lightweight polling: update only location (+ minimal status fields), do NOT flip the page into "loading"
+  React.useEffect(() => {
+    if (!tk) return;
+
+    let mounted = true;
+
+    const tick = async () => {
+      if (!mounted) return;
+      if (document.visibilityState !== 'visible') return;
+
+      setUpdating(true);
+      try {
+        const r = await fetchShare(tk);
+        if (!mounted) return;
+
+        setData((prev) => {
+          if (!prev) return r;
+
+          // Only change what we need for the live pin (and keep the rest stable).
+          const next: ShareResponse = {
+            ...prev,
+            // keep ride details stable; refresh status/timestamps if server changed them
+            ride: prev.ride
+              ? {
+                  ...prev.ride,
+                  status: r.ride?.status ?? prev.ride.status,
+                  started_at: r.ride?.started_at ?? prev.ride.started_at,
+                  completed_at: r.ride?.completed_at ?? prev.ride.completed_at,
+                }
+              : r.ride,
+            // keep request stable; refresh status if changed
+            request: prev.request
+              ? {
+                  ...prev.request,
+                  status: r.request?.status ?? prev.request.status,
+                }
+              : r.request ?? prev.request,
+            driver: r.driver ?? prev.driver,
+            vehicle: r.vehicle ?? prev.vehicle,
+            // update location only if it actually changed
+            location: sameLocation(prev.location, r.location) ? prev.location : r.location,
+          };
+
+          return next;
+        });
+
+        setErr(null);
+      } catch {
+        // Do not blank the page or stop rendering; just keep last good data.
+        // (You can expose a subtle message if you want, but not required.)
+      } finally {
+        if (mounted) setUpdating(false);
+      }
+    };
+
+    const id = window.setInterval(() => void tick(), POLL_MS);
     return () => {
       mounted = false;
       window.clearInterval(id);
     };
-  }, [token]);
+  }, [tk]);
 
   const pickup = data?.request?.pickup;
   const dropoff = data?.request?.dropoff;
@@ -127,68 +201,86 @@ export default function ShareTripPage() {
   const dropoffPos = isValidLatLng(dropoff) ? (dropoff as LatLng) : null;
   const driverPos = isValidLatLng(driverLoc) ? ({ lat: driverLoc!.lat, lng: driverLoc!.lng } as LatLng) : null;
 
-  const center: LatLng | null = driverPos ?? pickupPos ?? dropoffPos ?? null;
+  const centerCandidate: LatLng | null = driverPos ?? pickupPos ?? dropoffPos ?? null;
 
-  const markers: MapMarker[] = [];
-  if (pickupPos) markers.push({ id: 'pickup', position: pickupPos, label: 'P', title: 'Pickup' });
-  if (dropoffPos) markers.push({ id: 'dropoff', position: dropoffPos, label: 'D', title: 'Dropoff' });
-  if (driverPos) markers.push({ id: 'driver', position: driverPos, label: '🚗', title: 'Driver' });
+  // Set the map center once (no constant re-centering/panning).
+  React.useEffect(() => {
+    if (!mapCenter && centerCandidate) setMapCenter(centerCandidate);
+  }, [mapCenter, centerCandidate]);
+
+  const markers: MapMarker[] = React.useMemo(() => {
+    const out: MapMarker[] = [];
+    if (pickupPos) out.push({ id: 'pickup', position: pickupPos, label: 'P', title: 'Pickup' });
+    if (dropoffPos) out.push({ id: 'dropoff', position: dropoffPos, label: 'D', title: 'Dropoff' });
+    if (driverPos) out.push({ id: 'driver', position: driverPos, label: '🚗', title: 'Driver' });
+    return out;
+  }, [pickupPos?.lat, pickupPos?.lng, dropoffPos?.lat, dropoffPos?.lng, driverPos?.lat, driverPos?.lng]);
+
+  const openMapsTarget = driverPos ?? pickupPos ?? null;
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-2xl mx-auto space-y-3">
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="text-base font-semibold">{t('share.title')}</div>
-          <div className="text-xs text-gray-500 mt-1">{t('share.subtitle')}</div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm flex items-start justify-between gap-3">
+          <div>
+            <div className="text-base font-semibold">{t('share.title', 'Trip Share')}</div>
+            <div className="text-xs text-gray-500 mt-1">{t('share.subtitle', 'Live location updates without requiring an account')}</div>
+          </div>
+          {openMapsTarget ? (
+            <a className="btn" href={mapsLink(openMapsTarget.lat, openMapsTarget.lng)} target="_blank" rel="noreferrer">
+              {t('share.openMaps', 'Open in Maps')}
+            </a>
+          ) : null}
         </div>
 
-        {loading ? (
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm text-sm text-gray-600">{t('share.loading')}</div>
+        {initialLoading ? (
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm text-sm text-gray-600">
+            {t('share.loading', 'Loading…')}
+          </div>
         ) : err ? (
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm text-sm text-red-600">
-            {t('share.error')}: {err}
+            {t('share.error', 'Error')}: {err}
           </div>
         ) : data?.ride ? (
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold">{t('share.ride')} {data.ride.id.slice(0, 8)}…</div>
-                <div className="text-xs text-gray-500 mt-1">{t('share.status')}: {data.ride.status}</div>
-                <div className="text-xs text-gray-500">{t('share.created')}: {new Date(data.ride.created_at).toLocaleString()}</div>
+                <div className="text-sm font-semibold">
+                  {t('share.ride', 'Ride')} {data.ride.id.slice(0, 8)}…
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {t('share.status', 'Status')}: {data.ride.status}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {t('share.created', 'Created')}: {new Date(data.ride.created_at).toLocaleString()}
+                </div>
               </div>
 
-              {driverPos ? (
-                <a className="btn" href={mapsLink(driverPos.lat, driverPos.lng)} target="_blank" rel="noreferrer">
-                  {t('share.openMaps')}
-                </a>
-              ) : pickupPos ? (
-                <a className="btn" href={mapsLink(pickupPos.lat, pickupPos.lng)} target="_blank" rel="noreferrer">
-                  {t('share.openMaps')}
-                </a>
-              ) : null}
+              <div className="text-xs text-gray-500">
+                {updating ? t('share.updating', 'Updating location…') : t('share.live', 'Live')}
+              </div>
             </div>
 
-            {center ? (
+            {mapCenter ? (
               <div className="rounded-xl border border-gray-200 overflow-hidden">
-                <MapView
-                  center={center}
-                  zoom={14}
-                  markers={markers}
-                  className="h-72 w-full"
-                />
+                <MapView center={mapCenter} zoom={14} markers={markers} className="h-72 w-full" />
               </div>
-            ) : null}
+            ) : (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+                {t('share.noMapData', 'No location to display yet.')}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="rounded-xl border border-gray-200 p-3">
-                <div className="text-xs text-gray-500">{t('share.pickup')}</div>
+                <div className="text-xs text-gray-500">{t('share.pickup', 'Pickup')}</div>
                 <div className="text-sm font-medium mt-1">
                   {pickupPos ? `${pickupPos.lat.toFixed(5)}, ${pickupPos.lng.toFixed(5)}` : '—'}
                 </div>
                 {pickup?.address ? <div className="text-xs text-gray-500 mt-1">{pickup.address}</div> : null}
               </div>
               <div className="rounded-xl border border-gray-200 p-3">
-                <div className="text-xs text-gray-500">{t('share.dropoff')}</div>
+                <div className="text-xs text-gray-500">{t('share.dropoff', 'Dropoff')}</div>
                 <div className="text-sm font-medium mt-1">
                   {dropoffPos ? `${dropoffPos.lat.toFixed(5)}, ${dropoffPos.lng.toFixed(5)}` : '—'}
                 </div>
@@ -198,12 +290,14 @@ export default function ShareTripPage() {
 
             {data.vehicle ? (
               <div className="rounded-xl border border-gray-200 p-3">
-                <div className="text-xs text-gray-500">{t('share.vehicle')}</div>
+                <div className="text-xs text-gray-500">{t('share.vehicle', 'Vehicle')}</div>
                 <div className="text-sm mt-1">
                   {[data.vehicle.vehicle_type, data.vehicle.color, data.vehicle.make, data.vehicle.model].filter(Boolean).join(' · ') || '—'}
                 </div>
                 {data.vehicle.plate_suffix ? (
-                  <div className="text-xs text-gray-500 mt-1">{t('share.plateSuffix')}: {data.vehicle.plate_suffix}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {t('share.plateSuffix', 'Plate suffix')}: {data.vehicle.plate_suffix}
+                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -211,16 +305,18 @@ export default function ShareTripPage() {
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
               {driverPos && data.location ? (
                 <div>
-                  {t('share.lastLocation')}: {driverPos.lat.toFixed(5)}, {driverPos.lng.toFixed(5)}
+                  {t('share.lastLocation', 'Last location')}: {driverPos.lat.toFixed(5)}, {driverPos.lng.toFixed(5)}
                   <span className="text-gray-400"> · {new Date(data.location.updated_at).toLocaleTimeString()}</span>
                 </div>
               ) : (
-                <div>{t('share.noLocation')}</div>
+                <div>{t('share.noLocation', 'No live location available yet')}</div>
               )}
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm text-sm text-gray-600">{t('share.notFound')}</div>
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm text-sm text-gray-600">
+            {t('share.notFound', 'Not found')}
+          </div>
         )}
       </div>
     </div>
