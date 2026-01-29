@@ -118,7 +118,7 @@ export default function RiderPage() {
   React.useEffect(() => {
     const t = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(t);
-  }, []);
+  }, [setPickupLat, setPickupLng, setDropoffLat, setDropoffLng, setPickupAddress, setDropoffAddress]);
 
   const { data: requests, error, isLoading } = useQuery({
     queryKey: ['ride_requests'],
@@ -130,10 +130,10 @@ export default function RiderPage() {
     queryFn: fetchRides,
   });
 
-  const [pickupLat, setPickupLat] = React.useState('33.3152');
-  const [pickupLng, setPickupLng] = React.useState('44.3661');
-  const [dropoffLat, setDropoffLat] = React.useState('33.3120');
-  const [dropoffLng, setDropoffLng] = React.useState('44.3770');
+  const [pickupLat, setPickupLat] = React.useState('');
+  const [pickupLng, setPickupLng] = React.useState('');
+  const [dropoffLat, setDropoffLat] = React.useState('');
+  const [dropoffLng, setDropoffLng] = React.useState('');
   const [productCode, setProductCode] = React.useState<'standard' | 'premium' | 'family' | 'women_only'>('standard');
   const [preferFemaleDriver, setPreferFemaleDriver] = React.useState(false);
   const effectivePreferFemale = preferFemaleDriver || productCode === 'women_only';
@@ -215,6 +215,22 @@ export default function RiderPage() {
       }
     },
     [mapPickMode],
+
+// Sync the map preview inputs with an existing ride request (so "Nearby drivers" matches what you are about to dispatch).
+const setPickupFromRequest = React.useCallback((rr: RideRequestRow) => {
+  if (typeof rr?.pickup_lat === 'number' && typeof rr?.pickup_lng === 'number') {
+    setPickupLat(String(rr.pickup_lat));
+    setPickupLng(String(rr.pickup_lng));
+  }
+  if (typeof rr?.dropoff_lat === 'number' && typeof rr?.dropoff_lng === 'number') {
+    setDropoffLat(String(rr.dropoff_lat));
+    setDropoffLng(String(rr.dropoff_lng));
+  }
+  if (typeof rr?.pickup_address === 'string') setPickupAddress(rr.pickup_address);
+  if (typeof rr?.dropoff_address === 'string') setDropoffAddress(rr.dropoff_address);
+  setMapPickMode('pickup');
+}, []);
+
   );
 
   const [serviceArea, setServiceArea] = React.useState<{ id: string; name: string } | null>(null);
@@ -471,8 +487,9 @@ export default function RiderPage() {
   </div>
 
   <div className="mt-2 text-xs text-gray-600">
-    Nearby drivers: <span className="font-medium">{nearbyDrivers.data?.length ?? 0}</span>
+    Nearby drivers: <span className="font-medium">{pickupPos ? (nearbyDrivers.data?.length ?? 0) : '—'}</span>
     {nearbyDrivers.isFetching ? ' (refreshing...)' : ''}
+    {!pickupPos ? ' — set a pickup point on the map to preview.' : ''}
   </div>
 </div>
 
@@ -723,11 +740,20 @@ export default function RiderPage() {
 		      </div>
 
 		      <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            className="btn"
+            disabled={busy}
+            onClick={() => setPickupFromRequest(rr)}
+            title="Preview nearby drivers for this request's pickup on the map"
+          >
+            Preview pickup
+          </button>
 		        <button
 		          className="btn btn-primary"
 		          disabled={busy || !canMatch}
 		          title={matchActive ? 'A driver is already matched. Wait for acceptance or expiry.' : undefined}
                   onClick={async () => {
+                    setPickupFromRequest(rr);
                     setBusy(true);
                     setToast(null);
                     try {
