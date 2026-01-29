@@ -192,9 +192,15 @@ export default function ShareTripPage() {
   const dropoff = data?.request?.dropoff;
   const driverLoc = data?.location;
 
-  const pickupPos = isValidLatLng(pickup) ? (pickup as LatLng) : null;
-  const dropoffPos = isValidLatLng(dropoff) ? (dropoff as LatLng) : null;
-  const driverPos = isValidLatLng(driverLoc) ? ({ lat: driverLoc!.lat, lng: driverLoc!.lng } as LatLng) : null;
+  const pickupPos = React.useMemo(() => (isValidLatLng(pickup) ? (pickup as LatLng) : null), [pickup]);
+  const dropoffPos = React.useMemo(
+    () => (isValidLatLng(dropoff) ? (dropoff as LatLng) : null),
+    [dropoff],
+  );
+  const driverPos = React.useMemo(
+    () => (isValidLatLng(driverLoc) ? ({ lat: driverLoc!.lat, lng: driverLoc!.lng } as LatLng) : null),
+    [driverLoc],
+  );
 
   const centerCandidate: LatLng | null = driverPos ?? pickupPos ?? dropoffPos ?? null;
 
@@ -210,7 +216,7 @@ export default function ShareTripPage() {
     // IMPORTANT: driver marker uses blue car icon via MapView; no label so it doesn't overlap the icon.
     if (driverPos) out.push({ id: 'driver', position: driverPos, title: 'Driver' });
     return out;
-  }, [pickupPos?.lat, pickupPos?.lng, dropoffPos?.lat, dropoffPos?.lng, driverPos?.lat, driverPos?.lng]);
+  }, [pickupPos, dropoffPos, driverPos]);
 
   const openMapsTarget = driverPos ?? pickupPos ?? null;
 
