@@ -118,7 +118,7 @@ export default function RiderPage() {
   React.useEffect(() => {
     const t = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(t);
-  }, [setPickupLat, setPickupLng, setDropoffLat, setDropoffLng, setPickupAddress, setDropoffAddress]);
+  }, []);
 
   const { data: requests, error, isLoading } = useQuery({
     queryKey: ['ride_requests'],
