@@ -7,7 +7,7 @@
 // - We must explicitly handle OPTIONS and return CORS headers.
 
 import { handleOptions } from "../_shared/cors.ts";
-import { errorJson, okJson } from "../_shared/json.ts";
+import { errorJson, json } from "../_shared/json.ts";
 import { createServiceClient, requireUser } from "../_shared/supabase.ts";
 
 type NearbyDriversBody = {
@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
   candidates.sort((a, b) => a.dist_m - b.dist_m);
   const drivers = candidates.slice(0, limit_n);
 
-  return okJson({
+  return json({
     ok: true,
     request: {
       user_id: user.id,
