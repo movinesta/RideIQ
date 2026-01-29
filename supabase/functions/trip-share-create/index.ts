@@ -1,13 +1,12 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.92.0";
+import { handleOptions, getCorsHeaders } from "../_shared/cors.ts";
+import { createAnonClient, createServiceClient, requireUser } from "../_shared/supabase.ts";
 
-function corsHeaders(origin: string | null) {
-  return {
-    "Access-Control-Allow-Origin": origin ?? "*",
-    "Access-Control-Allow-Methods": "POST,OPTIONS",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Max-Age": "86400",
-  };
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...getCorsHeaders(), "content-type": "application/json" },
+  });
 }
 
 function toHex(bytes: ArrayBuffer): string {
@@ -28,42 +27,39 @@ function randomToken(): string {
 }
 
 serve(async (req) => {
-  const origin = req.headers.get("origin");
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
-  if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: corsHeaders(origin) });
-
-  const authHeader = req.headers.get("authorization") || "";
-  if (!authHeader.toLowerCase().startsWith("bearer ")) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders(origin), "content-type": "application/json" } });
+  const opt = handleOptions(req);
+  if (opt) return opt;
+  if (req.method !== "POST") {
+    return new Response("Method not allowed", { status: 405, headers: getCorsHeaders() });
   }
 
-  const anon = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
-    global: { headers: { Authorization: authHeader } },
-  });
-
-  const { data: userRes, error: userErr } = await anon.auth.getUser();
-  const user = userRes?.user;
-  if (userErr || !user) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { ...corsHeaders(origin), "content-type": "application/json" } });
+  const { user, error: authErr } = await requireUser(req);
+  if (authErr || !user) {
+    return jsonResponse({ error: "unauthorized", detail: authErr ?? "unauthorized" }, 401);
   }
 
-  const body = await req.json().catch(() => ({}));
-  const rideId = body.ride_id;
+  const body = await req.json().catch(() => ({} as any));
+  const rideId = body.ride_id as string | undefined;
   const ttlMinutes = Math.max(5, Math.min(24 * 60, Number(body.ttl_minutes ?? 120))); // default 2h, cap 24h
 
-  if (!rideId) {
-    return new Response(JSON.stringify({ error: "missing_ride_id" }), { status: 400, headers: { ...corsHeaders(origin), "content-type": "application/json" } });
-  }
+  if (!rideId) return jsonResponse({ error: "missing_ride_id" }, 400);
 
   // Validate user is the rider or driver for this ride via RLS (anon client)
+  const anon = createAnonClient(req);
   const { data: ride, error: rideErr } = await anon
     .from("rides")
-    .select("id,status")
+    .select("id,status,rider_id,driver_id")
     .eq("id", rideId)
     .maybeSingle();
 
   if (rideErr || !ride) {
-    return new Response(JSON.stringify({ error: "ride_not_found" }), { status: 404, headers: { ...corsHeaders(origin), "content-type": "application/json" } });
+    // If RLS blocks access, treat as not found
+    return jsonResponse({ error: "ride_not_found" }, 404);
+  }
+
+  // Explicit ownership check (defense-in-depth; prevents sharing arbitrary ride ids if RLS changes)
+  if (ride.rider_id !== user.id && ride.driver_id !== user.id) {
+    return jsonResponse({ error: "forbidden" }, 403);
   }
 
   const token = randomToken();
@@ -71,20 +67,17 @@ serve(async (req) => {
   const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
 
   // Use service role to insert share token (prevents client-side direct inserts)
-  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-
-  const { error: insErr } = await admin
-    .from("trip_share_tokens")
-    .insert({
-      ride_id: rideId,
-      created_by: user.id,
-      token_hash: tokenHash,
-      expires_at: expiresAt,
-    });
+  const admin = createServiceClient();
+  const { error: insErr } = await admin.from("trip_share_tokens").insert({
+    ride_id: rideId,
+    created_by: user.id,
+    token_hash: tokenHash,
+    expires_at: expiresAt,
+  });
 
   if (insErr) {
-    return new Response(JSON.stringify({ error: "insert_failed", detail: insErr.message }), { status: 400, headers: { ...corsHeaders(origin), "content-type": "application/json" } });
+    return jsonResponse({ error: "insert_failed", detail: insErr.message }, 400);
   }
 
-  return new Response(JSON.stringify({ ok: true, token, expires_at: expiresAt }), { status: 200, headers: { ...corsHeaders(origin), "content-type": "application/json" } });
+  return jsonResponse({ ok: true, token, expires_at: expiresAt }, 200);
 });
