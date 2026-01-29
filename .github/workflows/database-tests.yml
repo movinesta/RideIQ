@@ -1,0 +1,31 @@
+name: database-tests
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase
+        run: supabase start
+
+      - name: Reset local DB (apply migrations)
+        run: supabase db reset --no-seed
+
+      - name: Lint database (plpgsql_check)
+        run: supabase db lint --level error
+
+      - name: Run pgTAP tests
+        run: supabase test db

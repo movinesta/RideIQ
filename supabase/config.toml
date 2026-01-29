@@ -1,0 +1,132 @@
+project_id = "rideshare-local"
+
+[api]
+port = 54321
+schemas = ["public", "storage", "auth"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+port = 54323
+
+[inbucket]
+port = 54324
+
+[auth]
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173", "http://127.0.0.1:5173"]
+jwt_expiry = 3600
+enable_signup = true
+
+
+
+# Edge Functions auth model
+# - Default: verify_jwt = true (Supabase gateway validates the user JWT before executing the function).
+# - Disable verify_jwt ONLY for endpoints that must be callable without a user JWT:
+#   * payment provider callbacks / redirects
+#   * public share/view endpoints
+#   * cron endpoints protected by CRON_SECRET (or similar)
+#
+# Notes:
+# - Authenticated endpoints should still verify the user inside the function (e.g. requireUser()) for explicitness.
+# - Supabase docs have updated guidance around verify_jwt and JWT signing keys.
+
+# Payment provider callbacks / redirects (no user JWT)
+[functions.zaincash-return]
+verify_jwt = false
+
+[functions.topup-create]
+verify_jwt = false
+
+[functions.maps-config]
+verify_jwt = false
+
+[functions.topup-check]
+verify_jwt = false
+
+[functions.drivers-nearby]
+verify_jwt = false
+
+[functions.scheduled-ride-create]
+verify_jwt = false
+
+[functions.match-ride]
+verify_jwt = false
+
+[functions.scheduled-ride-list]
+verify_jwt = false
+
+[functions.zaincash-webhook]
+verify_jwt = false
+
+[functions.qicard-notify]
+verify_jwt = false
+
+[functions.qicard-return]
+verify_jwt = false
+
+[functions.asiapay-notify]
+verify_jwt = false
+
+[functions.asiapay-return]
+verify_jwt = false
+
+# Wallet/UI config endpoint (we validate auth inside the function; gateway JWT verification disabled)
+[functions.payments-config]
+verify_jwt = false
+
+
+# Public view endpoints (no user JWT)
+[functions.trip-share-view]
+verify_jwt = false
+
+[functions.whatsapp-booking-view]
+verify_jwt = false
+
+# Public support content (read-only, no user JWT)
+[functions.support-articles]
+verify_jwt = false
+
+[functions.support-article-detail]
+verify_jwt = false
+
+# Scheduled / maintenance endpoints (protected by CRON_SECRET)
+[functions.topup-reconcile]
+verify_jwt = false
+
+[functions.expire-rides]
+verify_jwt = false
+
+[functions.driver-stats-rollup]
+verify_jwt = false
+
+[functions.driver-leaderboard-refresh]
+verify_jwt = false
+
+[functions.stats-rollup]
+verify_jwt = false
+
+[functions.notifications-dispatch]
+verify_jwt = false
+
+[functions.trusted-contacts-dispatch]
+verify_jwt = false
+
+[functions.qicard-withdraw-webhook]
+verify_jwt = false
+
+[functions.asiapay-withdraw-webhook]
+verify_jwt = false
+
+[functions.zaincash-withdraw-webhook]
+verify_jwt = false
+
+[functions.payout-job-runner]
+verify_jwt = false
+
+[functions.payout-job-action]
+verify_jwt = true
