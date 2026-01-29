@@ -1,13 +1,12 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.92.0";
+import { handleOptions, getCorsHeaders } from "../_shared/cors.ts";
+import { createServiceClient } from "../_shared/supabase.ts";
 
-function corsHeaders(origin: string | null) {
-  return {
-    "Access-Control-Allow-Origin": origin ?? "*",
-    "Access-Control-Allow-Methods": "GET,OPTIONS",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Max-Age": "86400",
-  };
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...getCorsHeaders(), "content-type": "application/json" },
+  });
 }
 
 function toHex(bytes: ArrayBuffer): string {
@@ -22,36 +21,72 @@ async function sha256Hex(input: string): Promise<string> {
 }
 
 serve(async (req) => {
-  const origin = req.headers.get("origin");
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
-  if (req.method !== "GET") return new Response("Method not allowed", { status: 405, headers: corsHeaders(origin) });
+  const opt = handleOptions(req);
+  if (opt) return opt;
+
+  if (req.method !== "GET") {
+    return new Response("Method not allowed", { status: 405, headers: getCorsHeaders() });
+  }
 
   const url = new URL(req.url);
-  const token = url.searchParams.get("token")?.trim();
+  const token = url.searchParams.get("token")?.trim() ?? "";
   if (!token || token.length < 16) {
-    return new Response(JSON.stringify({ error: "invalid_token" }), { status: 400, headers: { ...corsHeaders(origin), "content-type": "application/json" } });
+    return json({ error: "invalid_token" }, 400);
   }
 
-  const tokenHash = await sha256Hex(token);
+  const supabase = createServiceClient();
 
-  // Service role is required because this is a tokenized public endpoint (no JWT).
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
+  // Support both:
+  // - token (plaintext) => hash it and match token_hash
+  // - token_hash (client mistakenly passes hash) => match token_hash directly
+  let share: any = null;
+  let token_mode: "hash" | "token" | "legacy_token" = "token";
 
-  // Validate token + fetch ride id
-  const { data: share, error: shareErr } = await supabase
-    .from("trip_share_tokens")
-    .select("ride_id, expires_at, revoked_at")
-    .eq("token_hash", tokenHash)
-    .maybeSingle();
+  // 1) token provided is already token_hash
+  {
+    const { data, error } = await supabase
+      .from("trip_share_tokens")
+      .select("ride_id, expires_at, revoked_at")
+      .eq("token_hash", token)
+      .maybeSingle();
+    if (!error && data) {
+      share = data;
+      token_mode = "hash";
+    }
+  }
 
-  if (shareErr || !share || share.revoked_at) {
-    return new Response(JSON.stringify({ error: "not_found" }), { status: 404, headers: { ...corsHeaders(origin), "content-type": "application/json" } });
+  // 2) normal path: sha256(token) equals token_hash
+  if (!share) {
+    const tokenHash = await sha256Hex(token);
+    const { data, error } = await supabase
+      .from("trip_share_tokens")
+      .select("ride_id, expires_at, revoked_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+    if (!error && data) {
+      share = data;
+      token_mode = "token";
+    }
+  }
+
+  // 3) legacy fallback (if any old rows stored plaintext token)
+  if (!share) {
+    const { data, error } = await supabase
+      .from("trip_share_tokens")
+      .select("ride_id, expires_at, revoked_at")
+      .eq("token", token)
+      .maybeSingle();
+    if (!error && data) {
+      share = data;
+      token_mode = "legacy_token";
+    }
+  }
+
+  if (!share || share.revoked_at) {
+    return json({ error: "not_found" }, 404);
   }
   if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) {
-    return new Response(JSON.stringify({ error: "expired" }), { status: 410, headers: { ...corsHeaders(origin), "content-type": "application/json" } });
+    return json({ error: "expired" }, 410);
   }
 
   // Fetch minimal, non-sensitive ride data
@@ -62,7 +97,7 @@ serve(async (req) => {
     .maybeSingle();
 
   if (rideErr || !ride) {
-    return new Response(JSON.stringify({ error: "ride_not_found" }), { status: 404, headers: { ...corsHeaders(origin), "content-type": "application/json" } });
+    return json({ error: "ride_not_found" }, 404);
   }
 
   // Latest driver location (optional)
@@ -85,6 +120,7 @@ serve(async (req) => {
       .select("make,model,color,plate_number,vehicle_type")
       .eq("id", ride.vehicle_id)
       .maybeSingle();
+
     if (v) {
       const plate = (v.plate_number ?? "").toString();
       vehicle = {
@@ -97,8 +133,10 @@ serve(async (req) => {
     }
   }
 
-  return new Response(
-    JSON.stringify({
+  return json(
+    {
+      ok: true,
+      token_mode,
       ride: {
         id: ride.id,
         status: ride.status,
@@ -108,7 +146,7 @@ serve(async (req) => {
       },
       vehicle,
       location,
-    }),
-    { status: 200, headers: { ...corsHeaders(origin), "content-type": "application/json" } },
+    },
+    200,
   );
 });
