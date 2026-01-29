@@ -99,8 +99,8 @@ Deno.serve(async (req) => {
     return errorJson("Invalid JSON body", 400, "BAD_REQUEST");
   }
 
-  const pickup_lat = toNumber(body?.pickup_lat);
-  const pickup_lng = toNumber(body?.pickup_lng);
+  const pickup_lat = toNumber(body?.pickup_lat ?? (body as { lat?: unknown })?.lat);
+  const pickup_lng = toNumber(body?.pickup_lng ?? (body as { lng?: unknown })?.lng);
   if (pickup_lat === null || pickup_lng === null) {
     return errorJson("pickup_lat/pickup_lng are required", 400, "BAD_REQUEST");
   }
@@ -108,7 +108,10 @@ Deno.serve(async (req) => {
   const radius_m = clamp(toNumber(body?.radius_m) ?? 5000, 100, 50000);
   const limit_n = clamp(Math.trunc(toNumber(body?.limit_n) ?? 25), 1, 200);
   const stale_after_seconds = clamp(
-    Math.trunc(toNumber(body?.stale_after_seconds) ?? 120),
+    Math.trunc(
+      toNumber(body?.stale_after_seconds ?? (body as { stale_seconds?: unknown })?.stale_seconds) ??
+        120,
+    ),
     10,
     3600,
   );
