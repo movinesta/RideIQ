@@ -22644,6 +22644,10 @@ CREATE POLICY service_areas_admin_write_upd ON public.service_areas FOR UPDATE T
 CREATE POLICY service_areas_select_active_or_admin ON public.service_areas FOR SELECT TO authenticated USING (((is_active = true) OR ( SELECT public.is_admin() AS is_admin)));
 
 
+CREATE POLICY service_areas_select_active_anon ON public.service_areas FOR SELECT TO anon USING ((is_active = true));
+
+
+
 --
 -- TOC entry 7089 (class 0 OID 43676)
 -- Dependencies: 480
@@ -34160,6 +34164,7 @@ GRANT SELECT ON TABLE public.payout_provider_job_attempts TO authenticated;
 
 GRANT ALL ON TABLE public.pricing_configs TO service_role;
 GRANT SELECT ON TABLE public.pricing_configs TO authenticated;
+GRANT SELECT ON TABLE public.pricing_configs TO anon;
 
 
 --
@@ -34421,6 +34426,7 @@ GRANT ALL ON TABLE public.ride_intents TO service_role;
 
 GRANT ALL ON TABLE public.ride_products TO service_role;
 GRANT SELECT ON TABLE public.ride_products TO authenticated;
+GRANT SELECT ON TABLE public.ride_products TO anon;
 
 
 --
@@ -34500,6 +34506,7 @@ GRANT ALL ON TABLE public.scheduled_rides TO service_role;
 --
 
 GRANT ALL ON TABLE public.service_areas TO authenticated;
+GRANT SELECT ON TABLE public.service_areas TO anon;
 GRANT ALL ON TABLE public.service_areas TO service_role;
 
 
