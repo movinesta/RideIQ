@@ -149,10 +149,8 @@ export default function ShareTripPage() {
         setData((prev) => {
           if (!prev) return r;
 
-          // Only change what we need for the live pin (and keep the rest stable).
           const next: ShareResponse = {
             ...prev,
-            // keep ride details stable; refresh status/timestamps if server changed them
             ride: prev.ride
               ? {
                   ...prev.ride,
@@ -161,7 +159,6 @@ export default function ShareTripPage() {
                   completed_at: r.ride?.completed_at ?? prev.ride.completed_at,
                 }
               : r.ride,
-            // keep request stable; refresh status if changed
             request: prev.request
               ? {
                   ...prev.request,
@@ -170,7 +167,6 @@ export default function ShareTripPage() {
               : r.request ?? prev.request,
             driver: r.driver ?? prev.driver,
             vehicle: r.vehicle ?? prev.vehicle,
-            // update location only if it actually changed
             location: sameLocation(prev.location, r.location) ? prev.location : r.location,
           };
 
@@ -179,8 +175,7 @@ export default function ShareTripPage() {
 
         setErr(null);
       } catch {
-        // Do not blank the page or stop rendering; just keep last good data.
-        // (You can expose a subtle message if you want, but not required.)
+        // Keep last good data.
       } finally {
         if (mounted) setUpdating(false);
       }
@@ -212,7 +207,8 @@ export default function ShareTripPage() {
     const out: MapMarker[] = [];
     if (pickupPos) out.push({ id: 'pickup', position: pickupPos, label: 'P', title: 'Pickup' });
     if (dropoffPos) out.push({ id: 'dropoff', position: dropoffPos, label: 'D', title: 'Dropoff' });
-    if (driverPos) out.push({ id: 'driver', position: driverPos, label: '🚗', title: 'Driver' });
+    // IMPORTANT: driver marker uses blue car icon via MapView; no label so it doesn't overlap the icon.
+    if (driverPos) out.push({ id: 'driver', position: driverPos, title: 'Driver' });
     return out;
   }, [pickupPos?.lat, pickupPos?.lng, dropoffPos?.lat, dropoffPos?.lng, driverPos?.lat, driverPos?.lng]);
 
@@ -286,31 +282,6 @@ export default function ShareTripPage() {
                 </div>
                 {dropoff?.address ? <div className="text-xs text-gray-500 mt-1">{dropoff.address}</div> : null}
               </div>
-            </div>
-
-            {data.vehicle ? (
-              <div className="rounded-xl border border-gray-200 p-3">
-                <div className="text-xs text-gray-500">{t('share.vehicle', 'Vehicle')}</div>
-                <div className="text-sm mt-1">
-                  {[data.vehicle.vehicle_type, data.vehicle.color, data.vehicle.make, data.vehicle.model].filter(Boolean).join(' · ') || '—'}
-                </div>
-                {data.vehicle.plate_suffix ? (
-                  <div className="text-xs text-gray-500 mt-1">
-                    {t('share.plateSuffix', 'Plate suffix')}: {data.vehicle.plate_suffix}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-              {driverPos && data.location ? (
-                <div>
-                  {t('share.lastLocation', 'Last location')}: {driverPos.lat.toFixed(5)}, {driverPos.lng.toFixed(5)}
-                  <span className="text-gray-400"> · {new Date(data.location.updated_at).toLocaleTimeString()}</span>
-                </div>
-              ) : (
-                <div>{t('share.noLocation', 'No live location available yet')}</div>
-              )}
             </div>
           </div>
         ) : (

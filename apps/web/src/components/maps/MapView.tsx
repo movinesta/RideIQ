@@ -8,8 +8,6 @@ export type MapMarker = {
   position: LatLng;
   label?: string;
   title?: string;
-  /** Optional semantic kind; used for applying default icons (e.g. driver). */
-  kind?: 'driver' | 'pickup' | 'dropoff';
 };
 
 export type MapCircle = {
@@ -27,27 +25,37 @@ type MapViewProps = {
   onMapClick?: (pos: LatLng) => void;
 };
 
+function isDriverMarker(id: string) {
+  return id === 'driver' || id.startsWith('driver:');
+}
 
-
-// --- Default marker icons ---
-const DRIVER_BLUE_CAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
-  <circle cx="12" cy="12" r="11" fill="white" stroke="#1d4ed8" stroke-width="2"/>
-  <path fill="#1d4ed8" d="M18.92 5.01C18.72 4.42 18.16 4 17.5 4h-11c-.66 0-1.21.42-1.41 1.01L3 11v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 6h10.29l1.04 3H5.81l1.04-3zM19 16H5v-5h14v5zM7.5 14c-.83 0-1.5-.67-1.5-1.5S6.67 11 7.5 11 9 11.67 9 12.5 8.33 14 7.5 14zm9 0c-.83 0-1.5-.67-1.5-1.5S15.67 11 16.5 11 18 11.67 18 12.5 17.33 14 16.5 14z"/>
-</svg>`;
-
-function isDriverMarker(m: MapMarker) {
-  return m.kind === 'driver' || m.id === 'driver' || m.id.startsWith('driver:');
+function blueCarSvgDataUrl() {
+  // Simple blue car icon (inline SVG). Works reliably as a Google Maps Marker icon via data URL.
+  const svg = `
+  <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+    <defs>
+      <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.35"/>
+      </filter>
+    </defs>
+    <g filter="url(#s)">
+      <path d="M14 34c0-8 6-14 14-14h8c8 0 14 6 14 14v10c0 2-2 4-4 4h-2a8 8 0 0 0-16 0H24a8 8 0 0 0-16 0h-2c-2 0-4-2-4-4V34c0-2 2-4 4-4h4.5l3.1-6.2A10 10 0 0 1 22.5 18h19a10 10 0 0 1 9 5.8l3.1 6.2H58c2 0 4 2 4 4v10c0 2-2 4-4 4h-2" fill="#1e88e5" stroke="#0d47a1" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M18 30h28" stroke="#bbdefb" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+      <circle cx="20" cy="48" r="6" fill="#263238"/>
+      <circle cx="20" cy="48" r="3" fill="#90a4ae"/>
+      <circle cx="44" cy="48" r="6" fill="#263238"/>
+      <circle cx="44" cy="48" r="3" fill="#90a4ae"/>
+    </g>
+  </svg>
+  `.trim();
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 function driverIcon(g: any) {
-  // Use an SVG data URL so we don't depend on external assets.
-  const url = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(DRIVER_BLUE_CAR_SVG)}`;
-  const sizePx = 36;
-  return {
-    url,
-    scaledSize: new g.maps.Size(sizePx, sizePx),
-    anchor: new g.maps.Point(sizePx / 2, sizePx / 2),
-  };
+  // Size tuned to look like a "pin" without taking over the map.
+  const size = new g.maps.Size(34, 34);
+  const anchor = new g.maps.Point(17, 17);
+  return { url: blueCarSvgDataUrl(), scaledSize: size, anchor };
 }
 
 export function MapView({ center, zoom = 13, markers = [], circles = [], className, onMapClick }: MapViewProps) {
@@ -84,8 +92,8 @@ export function MapView({ center, zoom = 13, markers = [], circles = [], classNa
       }
     })();
 
-    const markers = markersRef.current;
-    const circles = circlesRef.current;
+    const m = markersRef.current;
+    const c = circlesRef.current;
     const map = mapRef.current;
     const clickListener = clickListenerRef.current;
 
@@ -103,10 +111,10 @@ export function MapView({ center, zoom = 13, markers = [], circles = [], classNa
       }
 
       mapRef.current = null;
-      markers.forEach((m) => m?.setMap?.(null));
-      circles.forEach((c) => c?.setMap?.(null));
-      markers.clear();
-      circles.clear();
+      m.forEach((mm) => mm?.setMap?.(null));
+      c.forEach((cc) => cc?.setMap?.(null));
+      m.clear();
+      c.clear();
       if (clickListener?.remove) clickListener.remove();
       clickListenerRef.current = null;
     };
@@ -141,22 +149,32 @@ export function MapView({ center, zoom = 13, markers = [], circles = [], classNa
     // Upsert
     for (const m of markers) {
       const existing = current.get(m.id);
-      const driver = isDriverMarker(m);
-      const nextLabel = driver ? null : typeof m.label === 'string' ? m.label : null;
-      const nextIcon = driver ? driverIcon(g) : null;
+      const driver = isDriverMarker(m.id);
 
       if (existing) {
         existing.setPosition(m.position);
         if (typeof m.title === 'string') existing.setTitle(m.title);
-        existing.setLabel(nextLabel);
-        existing.setIcon(nextIcon);
+
+        if (driver) {
+          existing.setIcon(driverIcon(g));
+          existing.setLabel(null);
+        } else {
+          // Restore default icon if this marker is not a driver marker.
+          try {
+            existing.setIcon(null);
+          } catch {
+            // ignore
+          }
+          if (typeof m.label === 'string') existing.setLabel(m.label);
+          else existing.setLabel(null);
+        }
       } else {
         const marker = new g.maps.Marker({
           map,
           position: m.position,
           title: m.title,
-          label: nextLabel ?? undefined,
-          icon: nextIcon ?? undefined,
+          label: driver ? undefined : m.label,
+          icon: driver ? driverIcon(g) : undefined,
         });
         current.set(m.id, marker);
       }
