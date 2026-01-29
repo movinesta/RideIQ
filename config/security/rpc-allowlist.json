@@ -19,6 +19,7 @@
     "create_ride_incident",
     "driver_claim_order_delivery",
     "is_admin",
+    "nearby_available_drivers_v1",
     "merchant_chat_get_or_create_thread",
     "merchant_chat_list_messages",
     "merchant_chat_mark_read",

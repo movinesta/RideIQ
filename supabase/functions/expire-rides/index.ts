@@ -112,6 +112,29 @@ Deno.serve(async (req) => {
       results.push({ ride_id: r.id, from: r.status, action: 'canceled' });
     }
 
+
+    // NEW: Expire ride requests stuck in 'matched' past match_deadline (LOGIC-02 fix)
+    const expireMatchedLimit = clampInt(
+      Number(url.searchParams.get('expire_matched_limit') ?? String(limit)),
+      1,
+      500,
+    );
+    let expiredMatchedRequests = 0;
+    if (!dryRun) {
+      const { data: expiredCount, error: expErr } = await service.rpc('expire_matched_ride_requests_v1', {
+        p_limit: expireMatchedLimit,
+      });
+
+      if (expErr) {
+        results.push({ action: 'expire_matched_ride_requests', status: 'error', error: expErr.message });
+      } else {
+        expiredMatchedRequests = Number(expiredCount ?? 0) || 0;
+        results.push({ action: 'expire_matched_ride_requests', status: 'ok', expired: expiredMatchedRequests });
+      }
+    } else {
+      results.push({ action: 'expire_matched_ride_requests', status: 'dry_run', limit: expireMatchedLimit });
+    }
+
     let staleDriversMarkedOffline = 0;
     if (!dryRun) {
       const { data: markedCount, error: staleErr } = await service.rpc('admin_mark_stale_drivers_offline', {
@@ -163,6 +186,7 @@ Deno.serve(async (req) => {
         stale_driver_after_seconds: staleDriverAfterSeconds,
         stale_driver_limit: staleDriverLimit,
         stale_drivers_marked_offline: staleDriversMarkedOffline,
+        expired_matched_requests: expiredMatchedRequests,
         stuck_reserved_released: stuckReservedReleased,
         processed: results.length,
         results,

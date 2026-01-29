@@ -1591,6 +1591,78 @@ $$;
 
 ALTER FUNCTION public.admin_mark_stale_drivers_offline(p_stale_after_seconds integer, p_limit integer) OWNER TO postgres;
 
+
+--
+-- Added: nearby_available_drivers_v1 (Admin diagnostics) + expire_matched_ride_requests_v1 (cron cleanup)
+--
+
+CREATE FUNCTION public.nearby_available_drivers_v1(
+    p_pickup_lat double precision,
+    p_pickup_lng double precision,
+    p_radius_m double precision,
+    p_stale_after_seconds integer DEFAULT 120,
+    p_limit integer DEFAULT 100
+) RETURNS TABLE(driver_id uuid, lat double precision, lng double precision, dist_m double precision, updated_at timestamp with time zone)
+    LANGUAGE sql SECURITY DEFINER
+    SET search_path TO 'pg_catalog, public, extensions'
+    AS $$
+  select
+    dl.driver_id,
+    dl.lat,
+    dl.lng,
+    extensions.st_distance(dl.loc, pt.g) as dist_m,
+    dl.updated_at
+  from public.driver_locations dl
+  join public.drivers d on d.id = dl.driver_id
+  cross join lateral (
+    select extensions.st_setsrid(extensions.st_makepoint(p_pickup_lng, p_pickup_lat), 4326)::extensions.geography as g
+  ) pt
+  where
+    public.is_admin(auth.uid())
+    and d.status = 'available'::public.driver_status
+    and dl.updated_at >= now() - make_interval(secs => greatest(1, coalesce(p_stale_after_seconds, 120)))
+    and extensions.st_dwithin(dl.loc, pt.g, greatest(0, coalesce(p_radius_m, 0)))
+  order by dist_m asc
+  limit greatest(1, least(coalesce(p_limit, 100), 500));
+$$;
+
+ALTER FUNCTION public.nearby_available_drivers_v1(p_pickup_lat double precision, p_pickup_lng double precision, p_radius_m double precision, p_stale_after_seconds integer, p_limit integer) OWNER TO postgres;
+
+
+CREATE FUNCTION public.expire_matched_ride_requests_v1(p_limit integer DEFAULT 200) RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog, public'
+    AS $$
+DECLARE
+  v_count integer := 0;
+  v_limit integer;
+BEGIN
+  v_limit := greatest(1, least(coalesce(p_limit, 200), 1000));
+
+  WITH cte AS (
+    SELECT id
+    FROM public.ride_requests
+    WHERE status = 'matched'::public.ride_request_status
+      AND match_deadline IS NOT NULL
+      AND match_deadline <= now()
+    ORDER BY match_deadline ASC
+    LIMIT v_limit
+    FOR UPDATE SKIP LOCKED
+  )
+  UPDATE public.ride_requests rr
+  SET status = 'expired'::public.ride_request_status,
+      updated_at = now()
+  FROM cte
+  WHERE rr.id = cte.id;
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+ALTER FUNCTION public.expire_matched_ride_requests_v1(p_limit integer) OWNER TO postgres;
+
+
 --
 -- TOC entry 1395 (class 1255 OID 39766)
 -- Name: admin_record_ride_refund(uuid, integer, text); Type: FUNCTION; Schema: public; Owner: postgres
@@ -31667,6 +31739,23 @@ GRANT ALL ON FUNCTION public.admin_grant_user(p_user uuid, p_note text) TO authe
 
 REVOKE ALL ON FUNCTION public.admin_mark_stale_drivers_offline(p_stale_after_seconds integer, p_limit integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION public.admin_mark_stale_drivers_offline(p_stale_after_seconds integer, p_limit integer) TO service_role;
+
+
+--
+-- Name: FUNCTION nearby_available_drivers_v1(p_pickup_lat double precision, p_pickup_lng double precision, p_radius_m double precision, p_stale_after_seconds integer, p_limit integer); Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON FUNCTION public.nearby_available_drivers_v1(p_pickup_lat double precision, p_pickup_lng double precision, p_radius_m double precision, p_stale_after_seconds integer, p_limit integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.nearby_available_drivers_v1(p_pickup_lat double precision, p_pickup_lng double precision, p_radius_m double precision, p_stale_after_seconds integer, p_limit integer) TO authenticated;
+GRANT ALL ON FUNCTION public.nearby_available_drivers_v1(p_pickup_lat double precision, p_pickup_lng double precision, p_radius_m double precision, p_stale_after_seconds integer, p_limit integer) TO service_role;
+
+--
+-- Name: FUNCTION expire_matched_ride_requests_v1(p_limit integer); Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON FUNCTION public.expire_matched_ride_requests_v1(p_limit integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.expire_matched_ride_requests_v1(p_limit integer) TO service_role;
+
 
 
 --
