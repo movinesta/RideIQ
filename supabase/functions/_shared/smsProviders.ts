@@ -131,7 +131,9 @@ export async function sendViaBulkSMSIraq(params: { phone: string; message: strin
 }
 
 export async function sendOtpWithFallback(params: { phone: string; otp: string; appName?: string }) {
-  const appName = params.appName ?? envTrim('OTP_APP_NAME') || 'RideIQ';
+  // JS/TS forbids mixing `??` with `||`/`&&` without parentheses.
+  // We intentionally use `||` so empty strings fall back to the default.
+  const appName = (params.appName ?? envTrim('OTP_APP_NAME')) || 'RideIQ';
   const message = `${appName} verification code: ${params.otp}`;
 
   const primary = await sendViaIraqISMS({ phone: params.phone, message });
