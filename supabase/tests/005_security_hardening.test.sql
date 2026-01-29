@@ -182,7 +182,7 @@ select ok(
 select throws_ok(
   $$ select public.transition_ride_v2(
         '00000000-0000-0000-0000-000000000000'::uuid,
-        'accepted'::public.ride_status,
+        'assigned'::public.ride_status,
         '00000000-0000-0000-0000-000000000000'::uuid,
         'rider'::public.ride_actor_type,
         0
