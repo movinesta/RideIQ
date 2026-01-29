@@ -25,7 +25,6 @@ enable_signup = true
 [auth.hook.send_sms]
 enabled = true
 uri = "https://ehtimvlmpghstlzvfipx.supabase.co/functions/v1/sms-hook"
-secrets = "env(AUTH_HOOK_SEND_SMS_SECRET)"
 
 
 
