@@ -327,7 +327,7 @@ export async function zaincashV2InitPayment(
     raw?.data?.paymentUrl ??
     raw?.data?.payment_url;
 
-  let transactionId = normalizeUuid(knownTransactionId);
+  let transactionId = normalizeUuid(knownTransactionId) || (typeof knownTransactionId === 'string' ? knownTransactionId.trim() : '');
   let redirectUrl = isHttpUrl(knownRedirectUrl) ? knownRedirectUrl : '';
 
   // Second: robust deep extraction (handles additional wrapper objects)
@@ -337,7 +337,7 @@ export async function zaincashV2InitPayment(
       const nk = normKey(k);
       return nk.includes('transaction') && nk.includes('id');
     });
-    if (foundTx) transactionId = normalizeUuid(foundTx.value);
+    if (foundTx) transactionId = normalizeUuid(foundTx.value) || (typeof foundTx.value === 'string' ? foundTx.value.trim() : String(foundTx.value ?? '').trim());
   }
 
   if (!redirectUrl) {
@@ -354,7 +354,7 @@ export async function zaincashV2InitPayment(
   // we're simply making the integration tolerant to provider response shape changes.
   if (!transactionId && redirectUrl) {
     const extracted = extractTransactionIdFromRedirectUrl(redirectUrl);
-    transactionId = normalizeUuid(extracted) || transactionId;
+    transactionId = normalizeUuid(extracted) || (typeof extracted === 'string' ? extracted.trim() : '') || transactionId;
   }
 
   
