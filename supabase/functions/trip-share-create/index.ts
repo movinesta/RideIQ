@@ -5,7 +5,7 @@ function corsHeaders(origin: string | null) {
   return {
     "Access-Control-Allow-Origin": origin ?? "*",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
-    "Access-Control-Allow-Headers": "authorization,content-type",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -29,7 +29,7 @@ function randomToken(): string {
 
 serve(async (req) => {
   const origin = req.headers.get("origin");
-  if (req.method === "OPTIONS") return new Response("", { status: 204, headers: corsHeaders(origin) });
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: corsHeaders(origin) });
 
   const authHeader = req.headers.get("authorization") || "";
