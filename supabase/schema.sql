@@ -35490,3 +35490,49 @@ ALTER FUNCTION public.expire_matched_ride_requests_v1(p_limit integer) OWNER TO 
 
 \unrestrict k7aackOaeeuJ1Ise1iNVupni1wbRgAk5ud8vhlJsGpiHxD3wzWaywcPtkAb0yXS
 
+-- -------------------------------------------------------------------
+-- P0 Security hardening: lock down schema CREATE and function EXECUTE
+--
+-- Goals (validated by supabase/tests/005_security_hardening.test.sql):
+-- - anon/authenticated cannot CREATE objects in schema public
+-- - PUBLIC has no implicit EXECUTE on public routines
+-- - anon/authenticated EXECUTE is allowlisted (granted only to approved RPCs)
+-- - service_role retains broad EXECUTE for server-side Edge Functions
+-- -------------------------------------------------------------------
+
+-- 1) Schema CREATE privileges must be revoked for untrusted roles.
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+REVOKE CREATE ON SCHEMA public FROM anon;
+REVOKE CREATE ON SCHEMA public FROM authenticated;
+
+-- 2) Functions are EXECUTABLE by PUBLIC by default in Postgres; remove implicit access.
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM anon;
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM authenticated;
+
+-- 3) Keep server-side role functional (Edge Functions using service role key).
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO service_role;
+
+-- 4) Grant EXECUTE back only to allowlisted RPCs (dynamic by identity signature).
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT signature
+    FROM public.security_allowlisted_rpcs_anon_v1
+  LOOP
+    EXECUTE 'GRANT EXECUTE ON FUNCTION ' || r.signature || ' TO anon';
+  END LOOP;
+
+  FOR r IN
+    SELECT signature
+    FROM public.security_allowlisted_rpcs_authenticated_v1
+  LOOP
+    EXECUTE 'GRANT EXECUTE ON FUNCTION ' || r.signature || ' TO authenticated';
+  END LOOP;
+END $$;
+
+-- 5) Optional: prevent future PUBLIC EXECUTE on functions created in schema public
+-- (applies to functions created by the role executing this statement).
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM anon, authenticated;
