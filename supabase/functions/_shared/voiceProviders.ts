@@ -1,5 +1,14 @@
 import { envTrim } from './config.ts';
 
+// NOTE: Supabase Edge Functions (Deno) must be able to statically analyze npm dependencies.
+// Dynamic imports like `await import(variable)` are not reliably bundled, which can surface as:
+// "Could not find constraint '<pkg>' in the list of packages" at runtime.
+//
+// Agora recommends using the `agora-token` NPM package for token generation.
+// Version is pinned to keep builds deterministic.
+// (The older `agora-access-token` package is deprecated.)
+import * as AgoraTokenNS from 'npm:agora-token@2.0.5';
+
 export type VoiceProvider = 'agora' | 'daily';
 
 export type AgoraJoinInfo = {
@@ -27,18 +36,10 @@ function requiredEnv(key: string): string {
   return v;
 }
 
-
-async function tryAgoraImport(): Promise<any> {
-  const candidates = ['npm:agora-access-token', 'npm:agora-token'];
-  let lastErr: unknown = null;
-  for (const c of candidates) {
-    try {
-      return await import(c);
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  throw (lastErr instanceof Error ? lastErr : new Error(String(lastErr))) ?? new Error('Failed to import Agora token builder');
+function getAgoraModule(): any {
+  // Deno may wrap CommonJS npm modules in a `default` export.
+  const ns: any = AgoraTokenNS as any;
+  return ns?.default ?? ns;
 }
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit & { timeoutMs?: number } = {}) {
@@ -80,10 +81,8 @@ export async function buildAgoraRtcToken(params: {
   const expiresInSeconds = params.expiresInSeconds ?? 60 * 30;
   const expiresAt = nowSec() + expiresInSeconds;
 
-  // Dynamic import keeps cold start smaller and avoids bundling issues.
-  // Agora's token builder package name differs across examples; try common packages.
-  const mod: any = await tryAgoraImport();
-  const RtcTokenBuilder = mod?.RtcTokenBuilder ?? mod?.RtcTokenBuilder2 ?? mod?.default?.RtcTokenBuilder;
+  const mod: any = getAgoraModule();
+  const RtcTokenBuilder = mod?.RtcTokenBuilder ?? mod?.RtcTokenBuilder2;
   const Role = mod?.RtcRole ?? mod?.RtcRoleType ?? mod?.RtcRoleEnum ?? mod?.Role;
   const PUBLISHER = Role?.PUBLISHER ?? Role?.Publisher ?? Role?.publisher ?? 1;
 
