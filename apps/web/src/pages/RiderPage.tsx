@@ -119,22 +119,6 @@ export default function RiderPage() {
 
   const [nowMs, setNowMs] = React.useState(() => Date.now());
 
-  const startVoiceCallForActiveRide = React.useCallback(
-    async (rideId: string) => {
-      setCallBusy(true);
-      setToast(null);
-      try {
-        const data = await voiceCallCreateForRide({ rideId, provider: 'auto' });
-        nav(`/voice-call/${data.call.id}`);
-      } catch (e: unknown) {
-        setToast(`Call error: ${errorText(e)}`);
-      } finally {
-        setCallBusy(false);
-      }
-    },
-    [nav],
-  );
-
   React.useEffect(() => {
     const t = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(t);
