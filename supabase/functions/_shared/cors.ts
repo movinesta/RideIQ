@@ -1,94 +1,114 @@
-import { envTrim } from "./config.ts";
+import { envTrim } from './config.ts';
 
 /**
- * CORS helper for Supabase Edge Functions.
+ * CORS helper for Edge Functions.
  *
- * Key points:
- * - Always respond to OPTIONS preflight.
- * - For credentialed requests (credentials: "include"), the allow-origin must NOT be "*".
- * - We prefer an allowlist derived from env, and we echo the request origin if it is allowed.
- *
- * Env:
- * - CORS_ALLOW_ORIGINS: comma-separated list of allowed origins (recommended)
- * - APP_ORIGIN: single origin (fallback)
- * - APP_BASE_URL: may include path; we use URL(base).origin (fallback)
+ * Strategy:
+ * - Prefer explicit APP_ORIGIN / APP_BASE_URL (stable production config).
+ * - If not set, allow GitHub Pages origin by default, and also allow localhost.
+ * - When request has Origin header and it's allowlisted, echo it back (required for credentials mode).
  */
-function parseAllowList(): string[] {
-  const csv = envTrim("CORS_ALLOW_ORIGINS");
-  if (csv) {
-    return csv
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+const DEFAULT_ALLOWLIST = new Set<string>([
+  'https://movinesta.github.io',
+  'http://localhost:5173',
+  'http://localhost:3000',
+]);
+
+function parseAllowlist(): Set<string> {
+  const raw = envTrim('CORS_ALLOW_ORIGINS');
+  if (!raw) return new Set(DEFAULT_ALLOWLIST);
+  const set = new Set<string>();
+  for (const part of raw.split(',')) {
+    const v = part.trim();
+    if (!v) continue;
+    try {
+      set.add(new URL(v).origin);
+    } catch {
+      // Ignore invalid values.
+    }
+  }
+  // Always include defaults to keep local dev working unless explicitly disabled.
+  for (const d of DEFAULT_ALLOWLIST) set.add(d);
+  return set;
+}
+
+const allowlist = parseAllowlist();
+
+function deriveConfiguredOrigin(): string | null {
+  const explicit = envTrim('APP_ORIGIN');
+  if (explicit) {
+    try {
+      return new URL(explicit).origin;
+    } catch {
+      // allow raw origin as-is
+      return explicit;
+    }
   }
 
-  const explicit = envTrim("APP_ORIGIN");
-  if (explicit) return [explicit];
-
-  const base = envTrim("APP_BASE_URL");
+  const base = envTrim('APP_BASE_URL');
   if (base) {
     try {
-      return [new URL(base).origin];
+      return new URL(base).origin;
     } catch {
-      // ignore
+      // fall through
     }
   }
 
-  // Dev fallback: allow any origin (non-credentialed).
-  return ["*"];
+  return null;
 }
 
-function pickAllowOrigin(reqOrigin: string | null, allowList: string[]): string {
-  if (!reqOrigin) return allowList[0] ?? "*";
+export function getCorsHeadersForRequest(req: Request): Record<string, string> {
+  const configured = deriveConfiguredOrigin();
+  const origin = req.headers.get('origin') ?? '';
 
-  // If the allowlist is wildcard-only, be dev-friendly but avoid credentialed '*'.
-  // We reflect localhost and GitHub Pages origins; otherwise keep '*'.
-  if (allowList.includes("*")) {
-    const o = reqOrigin.toLowerCase();
-    if (o.startsWith("http://localhost") || o.startsWith("https://localhost") || o.endsWith(".github.io")) {
-      return reqOrigin;
-    }
-    return "*";
-  }
-
-  return allowList.includes(reqOrigin) ? reqOrigin : (allowList[0] ?? reqOrigin);
-}
-
-export function getCorsHeaders(req?: Request): Record<string, string> {
-  const allowList = parseAllowList();
-  const reqOrigin = req?.headers?.get("origin") ?? null;
-  const allowOrigin = pickAllowOrigin(reqOrigin, allowList);
-
-  // Echo requested headers when possible to avoid future preflight surprises.
-  const requestedHeaders = req?.headers?.get("access-control-request-headers")?.trim();
-  const allowHeaders =
-    requestedHeaders && requestedHeaders.length > 0
-      ? requestedHeaders
-      : "authorization, x-client-info, apikey, content-type, accept, x-request-id";
+  // 1) If configured origin exists, always use it (stable).
+  // 2) Else if request origin is allowlisted, echo it back.
+  // 3) Else fall back to '*' (works for non-credentialed requests).
+  const allowOrigin =
+    configured ??
+    (origin && allowlist.has(origin) ? origin : '*');
 
   const headers: Record<string, string> = {
-    "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Headers": allowHeaders,
-    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-    "Access-Control-Expose-Headers": "x-request-id",
-    "Access-Control-Max-Age": "86400",
-    Vary: "Origin",
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id, accept',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    'Access-Control-Expose-Headers': 'x-request-id',
+    'Access-Control-Max-Age': '86400',
+    Vary: 'Origin',
   };
 
-  // Only set credentials when not using '*'.
-  if (allowOrigin !== "*") {
-    headers["Access-Control-Allow-Credentials"] = "true";
+  // Only set Allow-Credentials when origin is explicit (not '*').
+  if (allowOrigin !== '*') {
+    headers['Access-Control-Allow-Credentials'] = 'true';
   }
 
   return headers;
 }
 
-// Back-compat: some modules import `corsHeaders` as a constant.
+/**
+ * Back-compat: older modules import `corsHeaders`.
+ * This is env-based (no request) and is OK for server-to-server calls.
+ */
+export function getCorsHeaders(): Record<string, string> {
+  const configured = deriveConfiguredOrigin();
+  const allowOrigin = configured ?? '*';
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id, accept',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    'Access-Control-Expose-Headers': 'x-request-id',
+    'Access-Control-Max-Age': '86400',
+    Vary: 'Origin',
+  };
+  if (allowOrigin !== '*') headers['Access-Control-Allow-Credentials'] = 'true';
+  return headers;
+}
+
 export const corsHeaders: Record<string, string> = getCorsHeaders();
 
 export function handleOptions(req: Request): Response | null {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: getCorsHeaders(req) });
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: getCorsHeadersForRequest(req) });
   }
   return null;
 }

@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { handleOptions, getCorsHeaders } from "../_shared/cors.ts";
+import { handleOptions, getCorsHeadersForRequest } from "../_shared/cors.ts";
 import { errorJson, json } from "../_shared/json.ts";
 import { createAnonClient, createServiceClient, requireUser } from "../_shared/supabase.ts";
 import { AI_ASSISTANT_PROFILE_ID, ensureAiAssistantProfile } from "../_shared/assistant.ts";
@@ -573,6 +573,7 @@ async function proxyOpenRouterResponsesSse(openrouterRes: Response, onDelta: (d:
 }
 
 async function runAgentStream(
+  req: Request,
   svc: ReturnType<typeof createAnonClient>,
   surface: Surface,
   message: string,
@@ -623,11 +624,12 @@ async function runAgentStream(
   }
 
   // Create SSE response for the caller.
+  const cors = getCorsHeadersForRequest(req);
   const headers = new Headers({
-    ...getCorsHeaders(req),
+    ...cors,
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "no-cache, no-transform",
-    "Connection": "keep-alive",
+    Connection: "keep-alive",
   });
 
   const stream = new ReadableStream<Uint8Array>({
@@ -688,16 +690,15 @@ async function runAgentStream(
 serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
-  const cors = getCorsHeaders(req);
-  if (req.method !== "POST") return errorJson("Method not allowed", 405, "METHOD_NOT_ALLOWED", undefined, cors);
+  if (req.method !== "POST") return errorJson("Method not allowed", 405);
 
   const { user, error } = await requireUser(req);
-  if (error || !user) return errorJson(error ?? "Unauthorized", 401, "UNAUTHORIZED", undefined, cors);
+  if (error || !user) return errorJson(error ?? "Unauthorized", 401, "UNAUTHORIZED");
 
   const body = (await req.json().catch(() => ({}))) as ReqBody;
   let surface: Surface = (body.surface ?? "auto") as Surface;
   const message = String(body.message ?? "").trim();
-  if (!message) return errorJson("Missing message", 400, "BAD_REQUEST", undefined, cors);
+  if (!message) return errorJson("Missing message", 400, "BAD_REQUEST");
 
   // Use a user-scoped Supabase client (least-privilege). RLS stays enforced.
   const svc = createAnonClient(req);
@@ -709,7 +710,7 @@ serve(async (req) => {
 
   if (surface === "merchant_chat") {
     const threadId = String(body.thread_id ?? "").trim();
-    if (!threadId) return errorJson("Missing thread_id", 400, "BAD_REQUEST", undefined, cors);
+    if (!threadId) return errorJson("Missing thread_id", 400, "BAD_REQUEST");
 
     const { data: thread, error: tErr } = await svc
       .from("merchant_chat_threads")
@@ -717,7 +718,7 @@ serve(async (req) => {
       .eq("id", threadId)
       .maybeSingle();
 
-    if (tErr || !thread) return errorJson("Thread not found", 404, "NOT_FOUND", undefined, cors);
+    if (tErr || !thread) return errorJson("Thread not found", 404, "NOT_FOUND");
 
     const { data: merchant, error: mErr } = await svc
       .from("merchants")
@@ -725,18 +726,18 @@ serve(async (req) => {
       .eq("id", (thread as any).merchant_id)
       .maybeSingle();
 
-    if (mErr || !merchant) return errorJson("Merchant not found", 404, "NOT_FOUND", undefined, cors);
+    if (mErr || !merchant) return errorJson("Merchant not found", 404, "NOT_FOUND");
 
     const userId = user.id;
     const allowed = userId === (thread as any).customer_id || userId === (merchant as any).owner_profile_id;
-    if (!allowed) return errorJson("Forbidden", 403, "FORBIDDEN", undefined, cors);
+    if (!allowed) return errorJson("Forbidden", 403, "FORBIDDEN");
 
     const merchantId = String((merchant as any).id);
 
     const { data: msgs, error: msgErr } = await svc
       .rpc("merchant_chat_list_messages", { p_thread_id: threadId, p_before_created_at: null, p_before_id: null, p_limit: 30 });
 
-    if (msgErr) return errorJson(msgErr.message, 400, "DB_ERROR", undefined, cors);
+    if (msgErr) return errorJson(msgErr.message, 400, "DB_ERROR");
 
     const transcript = (msgs ?? [])
       .slice()
@@ -768,7 +769,7 @@ ${transcript}
 هسه سؤال/طلب المستخدم:
 ${message}`;
     if (body.stream) {
-      return await runAgentStream(svc, "merchant_chat", merged, { userId, merchantId }, async (finalText) => {
+      return await runAgentStream(req, svc, "merchant_chat", merged, { userId, merchantId }, async (finalText) => {
         // Write the bot reply as a real 3rd participant (service role bypasses RLS).
         await ensureAiAssistantProfile();
         const { data: inserted, error: insErr } = await svcAdmin
@@ -798,9 +799,9 @@ ${message}`;
       message_type: "ai",
     });
 
-    if (insErr) return errorJson(insErr.message, 400, "DB_ERROR", undefined, cors);
+    if (insErr) return errorJson(insErr.message, 400, "DB_ERROR");
 
-    return json({ ok: true, surface, reply }, 200, cors);
+    return json({ ok: true, surface, reply }, 200, getCorsHeadersForRequest(req));
   }
 
   if (surface === "merchant") {
@@ -810,26 +811,26 @@ ${message}`;
       .eq("owner_profile_id", user.id)
       .limit(5);
 
-    if (mErr) return errorJson(mErr.message, 400, "DB_ERROR", undefined, cors);
+    if (mErr) return errorJson(mErr.message, 400, "DB_ERROR");
     const merchantId = body.merchant_id ? String(body.merchant_id) : (merchants?.[0]?.id ?? null);
 
     const prefix = merchants && merchants.length > 1
       ? `ملاحظة: انت عندك اكثر من متجر: ${merchants.map((m:any)=>m.business_name).join("، ")}. اذا تريد واحد محدد قلّي اسمه.\n\n`
       : "";
 
-    if (body.stream) return await runAgentStream(svc, "merchant", prefix + message, { userId: user.id, merchantId: merchantId ?? undefined });
+    if (body.stream) return await runAgentStream(req, svc, "merchant", prefix + message, { userId: user.id, merchantId: merchantId ?? undefined });
     const reply = await runAgent(svc, "merchant", prefix + message, { userId: user.id, merchantId: merchantId ?? undefined });
-    return json({ ok: true, surface, reply }, 200, cors);
+    return json({ ok: true, surface, reply }, 200, getCorsHeadersForRequest(req));
   }
 
   if (surface === "driver") {
-    if (body.stream) return await runAgentStream(svc, "driver", message, { userId: user.id });
+    if (body.stream) return await runAgentStream(req, svc, "driver", message, { userId: user.id });
     const reply = await runAgent(svc, "driver", message, { userId: user.id });
-    return json({ ok: true, surface, reply }, 200, cors);
+    return json({ ok: true, surface, reply }, 200, getCorsHeadersForRequest(req));
   }
 
-  if (body.stream) return await runAgentStream(svc, "copilot", message, { userId: user.id });
+  if (body.stream) return await runAgentStream(req, svc, "copilot", message, { userId: user.id });
 
   const reply = await runAgent(svc, "copilot", message, { userId: user.id });
-  return json({ ok: true, surface, reply }, 200, cors);
+  return json({ ok: true, surface, reply }, 200, getCorsHeadersForRequest(req));
 });
