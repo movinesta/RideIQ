@@ -18,6 +18,7 @@ jobs:
       # Your Supabase project ref, e.g. `ehtimvlmpghstlzvfipx`
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       AUTH_HOOK_SEND_SMS_SECRET: ${{ secrets.AUTH_HOOK_SEND_SMS_SECRET }}
+      AUTH_HOOK_SECRET: ${{ secrets.AUTH_HOOK_SECRET }}
 
     steps:
       - uses: actions/checkout@v4
