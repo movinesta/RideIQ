@@ -2,6 +2,7 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { createServiceClient, requireUser } from '../_shared/supabase.ts';
 import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
+import { normalizeError } from '../_shared/errors.ts';
 import { z } from 'npm:zod@3.23.8';
 
 const bodySchema = z.object({
@@ -14,7 +15,8 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return errorJson('Method not allowed', 405);
 
   try {
-    const { user } = await requireUser(req);
+    const { user, error: authError } = await requireUser(req);
+    if (!user) return errorJson(authError ?? 'Unauthorized', 401, 'UNAUTHORIZED');
     const ip = getClientIp(req);
     const rl = await consumeRateLimit({
       key: `voice-call-end:${user.id}:${ip ?? 'noip'}`,
@@ -75,7 +77,13 @@ Deno.serve(async (req) => {
 
     return json({ ok: true, call_id: body.call_id, status: nextStatus });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return errorJson(msg, 500, 'INTERNAL');
+    const ne = normalizeError(e);
+    console.error('[voice-call-end] error', ne.raw ?? e);
+    return errorJson(
+      ne.message,
+      500,
+      ne.code ?? 'INTERNAL',
+      ne.hint || ne.details ? { hint: ne.hint, details: ne.details } : undefined,
+    );
   }
 });

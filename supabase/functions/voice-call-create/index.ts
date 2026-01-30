@@ -2,6 +2,7 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { createServiceClient, requireUser } from '../_shared/supabase.ts';
 import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
+import { normalizeError } from '../_shared/errors.ts';
 import { z } from 'npm:zod@3.23.8';
 import { buildAgoraRtcToken, createDailyMeetingToken, createDailyRoom } from '../_shared/voiceProviders.ts';
 import { envTrim } from '../_shared/config.ts';
@@ -69,7 +70,8 @@ Deno.serve(async (req) => {
 
   try {
     // Auth
-    const { user } = await requireUser(req);
+    const { user, error: authError } = await requireUser(req);
+    if (!user) return errorJson(authError ?? 'Unauthorized', 401, 'UNAUTHORIZED');
     const ip = getClientIp(req);
     const rl = await consumeRateLimit({
       key: `voice-call-create:${user.id}:${ip ?? 'noip'}`,
@@ -111,7 +113,7 @@ Deno.serve(async (req) => {
 
     const { data: profiles, error: pErr } = await supabaseAdmin
       .from('profiles')
-      .select('id,active_role,full_name')
+      .select('id,active_role,display_name')
       .in('id', [user.id, calleeId]);
     if (pErr) throw pErr;
 
@@ -188,7 +190,7 @@ Deno.serve(async (req) => {
         const t = await createDailyMeetingToken({
           roomName: dailyRoomName!,
           userId: user.id,
-          userName: me.full_name ?? undefined,
+          userName: (me as any).display_name ?? undefined,
           isOwner: true,
         });
         join = { ...t, roomUrl: dailyRoomUrl };
@@ -224,7 +226,8 @@ Deno.serve(async (req) => {
       200,
     );
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return errorJson(msg, 500, 'INTERNAL');
+    const ne = normalizeError(e);
+    console.error('[voice-call-create] error', ne.raw ?? e);
+    return errorJson(ne.message, 500, ne.code ?? 'INTERNAL', ne.hint || ne.details ? { hint: ne.hint, details: ne.details } : undefined);
   }
 });
