@@ -135,7 +135,6 @@ export default function InterestsPage() {
     return () => {
       sub.subscription.unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function add(kind: InterestKind, payload: Partial<InterestTarget>) {
