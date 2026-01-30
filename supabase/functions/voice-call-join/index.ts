@@ -1,7 +1,7 @@
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { createServiceClient, requireUser } from '../_shared/supabase.ts';
-import { rateLimitByKey } from '../_shared/rateLimit.ts';
+import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
 import { z } from 'npm:zod@3.23.8';
 import { buildAgoraRtcToken, createDailyMeetingToken } from '../_shared/voiceProviders.ts';
 import { envTrim } from '../_shared/config.ts';
@@ -14,7 +14,19 @@ Deno.serve(async (req) => {
 
   try {
     const { user } = await requireUser(req);
-    await rateLimitByKey({ key: `voice-call-join:${user.id}`, limit: 30, windowMs: 60_000 });
+    const ip = getClientIp(req);
+    const rl = await consumeRateLimit({
+      key: `voice-call-join:${user.id}:${ip ?? 'noip'}`,
+      windowSeconds: 60,
+      limit: 30,
+    });
+    if (!rl.allowed) {
+      return json(
+        { error: 'Rate limit exceeded', code: 'RATE_LIMITED', remaining: rl.remaining, reset_at: rl.resetAt },
+        429,
+        buildRateLimitHeaders({ limit: 30, remaining: rl.remaining, resetAt: rl.resetAt }),
+      );
+    }
 
     const body = bodySchema.parse(await req.json());
     const supabaseAdmin = createServiceClient();
