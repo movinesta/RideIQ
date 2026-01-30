@@ -41,6 +41,9 @@ secrets = "env(AUTH_HOOK_SECRET)"
 [functions.zaincash-return]
 verify_jwt = false
 
+[functions.ai-gateway]
+verify_jwt = false
+
 [functions.driver-location-update]
 verify_jwt = false
 
