@@ -38,6 +38,20 @@ secrets = "env(AUTH_HOOK_SECRET)"
 # - Supabase docs have updated guidance around verify_jwt and JWT signing keys.
 
 # Payment provider callbacks / redirects (no user JWT)
+
+[functions.merchant-chat-autoreply]
+verify_jwt = false
+
+[functions.promotion-notify]
+verify_jwt = false
+
+[functions.interest-seed]
+verify_jwt = false
+
+[functions.notifications-dispatch]
+verify_jwt = false
+
+
 [functions.zaincash-return]
 verify_jwt = false
 
