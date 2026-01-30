@@ -393,7 +393,7 @@ export default function DriverPage() {
 
     const start = async () => {
       try {
-        const uid = await getUid();
+        await getUid();
         if (stopped) return;
 
         watchId = navigator.geolocation.watchPosition(
@@ -426,7 +426,7 @@ export default function DriverPage() {
                 speed_mps: pos.coords.speed ?? undefined,
                 vehicle_type: vehicleType,
               });
-            } catch (e: unknown) {
+            } catch {
               // Ignore rate limit errors to avoid spamming the UI
               // console.warn('Loc update failed', e);
             }
