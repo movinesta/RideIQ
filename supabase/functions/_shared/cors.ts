@@ -1,51 +1,94 @@
-import { envTrim } from './config.ts';
+import { envTrim } from "./config.ts";
 
-function deriveAllowOrigin(): string {
-  // Prefer explicit origin (useful when APP_BASE_URL contains a path).
-  // Use envTrim() which is safe under Deno's permission model (tests often
-  // run without --allow-env).
-  const explicit = envTrim('APP_ORIGIN');
-  if (explicit) return explicit;
+/**
+ * CORS helper for Supabase Edge Functions.
+ *
+ * Key points:
+ * - Always respond to OPTIONS preflight.
+ * - For credentialed requests (credentials: "include"), the allow-origin must NOT be "*".
+ * - We prefer an allowlist derived from env, and we echo the request origin if it is allowed.
+ *
+ * Env:
+ * - CORS_ALLOW_ORIGINS: comma-separated list of allowed origins (recommended)
+ * - APP_ORIGIN: single origin (fallback)
+ * - APP_BASE_URL: may include path; we use URL(base).origin (fallback)
+ */
+function parseAllowList(): string[] {
+  const csv = envTrim("CORS_ALLOW_ORIGINS");
+  if (csv) {
+    return csv
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
 
-  // Common: set APP_BASE_URL to your web app (e.g. http://localhost:5173 or
-  // https://<user>.github.io/<repo>/). We convert to URL.origin.
-  const base = envTrim('APP_BASE_URL');
+  const explicit = envTrim("APP_ORIGIN");
+  if (explicit) return [explicit];
+
+  const base = envTrim("APP_BASE_URL");
   if (base) {
     try {
-      return new URL(base).origin;
+      return [new URL(base).origin];
     } catch {
-      // fall through
+      // ignore
     }
   }
 
-  // Dev-friendly fallback.
-  return '*';
+  // Dev fallback: allow any origin (non-credentialed).
+  return ["*"];
 }
 
-export function getCorsHeaders(): Record<string, string> {
-  const allowOrigin = deriveAllowOrigin();
-  return {
-    // If allowOrigin is '*', browsers will not send credentials anyway.
-    // We deliberately do not set Access-Control-Allow-Credentials.
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
-    // Some endpoints use non-POST verbs (admin tools, cancellations, etc.)
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    // Allow the client to read request correlation ids.
-    'Access-Control-Expose-Headers': 'x-request-id',
-    // Cache preflight for a day (browser may clamp).
-    'Access-Control-Max-Age': '86400',
-    // Helps proxies/browsers cache correctly when not using '*'.
-    Vary: 'Origin',
+function pickAllowOrigin(reqOrigin: string | null, allowList: string[]): string {
+  if (!reqOrigin) return allowList[0] ?? "*";
+
+  // If the allowlist is wildcard-only, be dev-friendly but avoid credentialed '*'.
+  // We reflect localhost and GitHub Pages origins; otherwise keep '*'.
+  if (allowList.includes("*")) {
+    const o = reqOrigin.toLowerCase();
+    if (o.startsWith("http://localhost") || o.startsWith("https://localhost") || o.endsWith(".github.io")) {
+      return reqOrigin;
+    }
+    return "*";
+  }
+
+  return allowList.includes(reqOrigin) ? reqOrigin : (allowList[0] ?? reqOrigin);
+}
+
+export function getCorsHeaders(req?: Request): Record<string, string> {
+  const allowList = parseAllowList();
+  const reqOrigin = req?.headers?.get("origin") ?? null;
+  const allowOrigin = pickAllowOrigin(reqOrigin, allowList);
+
+  // Echo requested headers when possible to avoid future preflight surprises.
+  const requestedHeaders = req?.headers?.get("access-control-request-headers")?.trim();
+  const allowHeaders =
+    requestedHeaders && requestedHeaders.length > 0
+      ? requestedHeaders
+      : "authorization, x-client-info, apikey, content-type, accept, x-request-id";
+
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Headers": allowHeaders,
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "Access-Control-Expose-Headers": "x-request-id",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
   };
+
+  // Only set credentials when not using '*'.
+  if (allowOrigin !== "*") {
+    headers["Access-Control-Allow-Credentials"] = "true";
+  }
+
+  return headers;
 }
 
-// Back-compat: other modules import `corsHeaders`.
+// Back-compat: some modules import `corsHeaders` as a constant.
 export const corsHeaders: Record<string, string> = getCorsHeaders();
 
 export function handleOptions(req: Request): Response | null {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: getCorsHeaders() });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: getCorsHeaders(req) });
   }
   return null;
 }
