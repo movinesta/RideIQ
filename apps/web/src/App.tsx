@@ -42,6 +42,7 @@ import OrdersPage from './pages/OrdersPage';
 import OrderDetailPage from './pages/OrderDetailPage';
 import CheckoutPage from './pages/CheckoutPage';
 import AddressesPage from './pages/AddressesPage';
+import VoiceCallPage from './pages/VoiceCallPage';
 
 function RoleGate({ children }: { children: React.ReactNode }) {
   const loc = useLocation();
@@ -97,6 +98,7 @@ function ProtectedApp() {
           <Route path="/merchant/promotions" element={<MerchantPromotionsPage />} />
           <Route path="/merchant/chats" element={<MerchantChatsPage />} />
           <Route path="/merchant-chat/:threadId" element={<MerchantChatPage />} />
+          <Route path="/voice-call/:callId" element={<VoiceCallPage />} />
           <Route path="/admin/payments" element={<AdminPaymentsPage />} />
           <Route path="/admin/withdrawals" element={<AdminWithdrawalsPage />} />
           <Route path="/admin/payout-queue" element={<AdminPayoutQueuePage />} />

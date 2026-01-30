@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabaseClient';
 import NotificationsButton from './NotificationsButton';
 import RoleSwitcher from './RoleSwitcher';
+import VoiceCallListener from './VoiceCallListener';
 import { debounce } from '../lib/debounce';
 import i18n, { applyDocumentLocale, LOCALE_STORAGE_KEY, normalizeLanguage, type SupportedLanguage } from '../i18n';
 
@@ -91,6 +92,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen">
+      <VoiceCallListener uid={uid} />
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/90 backdrop-blur">
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">

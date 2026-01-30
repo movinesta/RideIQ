@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import type { InfiniteData, QueryFunctionContext } from '@tanstack/react-query';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -11,6 +11,8 @@ import {
   sendChatMessage,
   type ChatMessageCursor,
 } from '../lib/merchant';
+import { voiceCallCreateToProfile } from '../lib/voiceCalls';
+import { errorText } from '../lib/errors';
 
 const PAGE_SIZE = 50;
 
@@ -28,12 +30,62 @@ export default function MerchantChatPage() {
   const { threadId } = useParams();
   const id = (threadId ?? '') as string;
 
+  const nav = useNavigate();
+
   const qc = useQueryClient();
   const [text, setText] = useState('');
+  const [callBusy, setCallBusy] = useState(false);
+  const [callErr, setCallErr] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const markReadTimer = useRef<number | null>(null);
 
   const msgsKey = useMemo(() => ['merchant-chat-messages', id] as const, [id]);
+
+  const meQ = useQuery({
+    queryKey: ['me'] as const,
+    queryFn: async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) throw error;
+      return data.user;
+    },
+  });
+  const uid = meQ.data?.id ?? null;
+
+  const threadQ = useQuery({
+    queryKey: ['merchant-chat-thread', id] as const,
+    enabled: Boolean(id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('merchant_chat_threads')
+        .select('id,merchant_id,customer_id')
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      return data as { id: string; merchant_id: string; customer_id: string };
+    },
+  });
+
+  const merchantOwnerQ = useQuery({
+    queryKey: ['merchant-owner-profile', threadQ.data?.merchant_id ?? null] as const,
+    enabled: Boolean(threadQ.data?.merchant_id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('merchants')
+        .select('owner_profile_id')
+        .eq('id', threadQ.data!.merchant_id)
+        .single();
+      if (error) throw error;
+      return data as { owner_profile_id: string };
+    },
+  });
+
+  const calleeProfileId = useMemo(() => {
+    if (!uid) return null;
+    if (!threadQ.data) return null;
+    // customer -> call merchant owner profile; merchant -> call customer
+    if (threadQ.data.customer_id === uid) return merchantOwnerQ.data?.owner_profile_id ?? null;
+    return threadQ.data.customer_id;
+  }, [uid, threadQ.data, merchantOwnerQ.data]);
 
   const msgsQ = useInfiniteQuery<
     ChatPage,
@@ -152,11 +204,31 @@ export default function MerchantChatPage() {
     markRead();
   }
 
+  async function onCall() {
+    if (!calleeProfileId) return;
+    setCallBusy(true);
+    setCallErr(null);
+    try {
+      const created = await voiceCallCreateToProfile({ calleeProfileId, provider: 'auto' });
+      nav(`/voice-call/${created.call.id}`);
+    } catch (e: unknown) {
+      setCallErr(errorText(e));
+    } finally {
+      setCallBusy(false);
+    }
+  }
+
   return (
     <div className="max-w-3xl mx-auto p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Chat</h1>
-        {msgsQ.hasNextPage ? (
+        <div className="flex items-center gap-2">
+          {calleeProfileId ? (
+            <button className="btn btn-primary" disabled={callBusy} onClick={() => void onCall()}>
+              Call
+            </button>
+          ) : null}
+          {msgsQ.hasNextPage ? (
           <button
             className="border rounded px-3 py-2 hover:bg-gray-50 disabled:opacity-50"
             disabled={msgsQ.isFetchingNextPage}
@@ -164,8 +236,11 @@ export default function MerchantChatPage() {
           >
             {msgsQ.isFetchingNextPage ? 'Loading…' : 'Load earlier'}
           </button>
-        ) : null}
+          ) : null}
+        </div>
       </div>
+
+      {callErr ? <div className="text-sm text-red-600">Call error: {callErr}</div> : null}
 
       {msgsQ.isLoading ? <div className="text-sm text-gray-500">Loading…</div> : null}
       {msgsQ.error ? <div className="text-sm text-red-600">Failed to load messages.</div> : null}

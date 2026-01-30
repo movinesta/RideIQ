@@ -8,6 +8,7 @@ import { getDeliveryForOrder, listDeliveryEvents, requestOrderDelivery, setDeliv
 import { formatIQD } from '../lib/money';
 import { errorText } from '../lib/errors';
 import { supabase } from '../lib/supabaseClient';
+import { voiceCallCreateToProfile } from '../lib/voiceCalls';
 
 const statusLabel: Record<MerchantOrderStatus, string> = {
   placed: 'Placed',
@@ -46,6 +47,25 @@ export default function OrderDetailPage() {
       nav(`/merchant-chat/${threadId}`, { state: { orderId } });
     },
   });
+
+  const [callBusyId, setCallBusyId] = React.useState<string | null>(null);
+  const [callErr, setCallErr] = React.useState<string | null>(null);
+
+  const startCallTo = React.useCallback(
+    async (profileId: string) => {
+      setCallBusyId(profileId);
+      setCallErr(null);
+      try {
+        const created = await voiceCallCreateToProfile({ calleeProfileId: profileId, provider: 'auto' });
+        nav(`/voice-call/${created.call.id}`);
+      } catch (e: unknown) {
+        setCallErr(errorText(e));
+      } finally {
+        setCallBusyId(null);
+      }
+    },
+    [nav],
+  );
 
 
   const profileQ = useQuery({ queryKey: ['my-profile-basics'], queryFn: getMyProfileBasics });
@@ -259,6 +279,27 @@ export default function OrderDetailPage() {
                   ) : (
                     <div className="text-xs text-gray-500">Driver: —</div>
                   )}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {order.customer_id ? (
+                      <button
+                        className="btn btn-primary"
+                        disabled={callBusyId === order.customer_id}
+                        onClick={() => void startCallTo(order.customer_id)}
+                      >
+                        Call customer
+                      </button>
+                    ) : null}
+                    {d.driver_id ? (
+                      <button
+                        className="btn btn-primary"
+                        disabled={callBusyId === d.driver_id}
+                        onClick={() => void startCallTo(d.driver_id)}
+                      >
+                        Call driver
+                      </button>
+                    ) : null}
+                  </div>
+                  {callErr ? <div className="text-sm text-red-700">{callErr}</div> : null}
                   {deliveryEventsQ.isLoading ? <div className="text-xs text-gray-500">Loading timeline…</div> : null}
                   {deliveryEventsQ.error ? <div className="text-xs text-red-700">{errorText(deliveryEventsQ.error)}</div> : null}
                   {Array.isArray(deliveryEventsQ.data) && deliveryEventsQ.data.length ? (

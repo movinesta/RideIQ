@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { MapView, type LatLng, type MapMarker } from '../components/maps/MapView';
 import { FunctionsHttpError, type RealtimeChannel } from '@supabase/supabase-js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -10,6 +10,7 @@ import { formatIQD } from '../lib/money';
 import { invokeEdge } from '../lib/edgeInvoke';
 import SafetyToolkitModal from '../components/SafetyToolkitModal';
 import RideCheckModal from '../components/RideCheckModal';
+import { voiceCallCreateForRide } from '../lib/voiceCalls';
 
 type DriverRow = {
   id: string;
@@ -202,9 +203,11 @@ const allowedTransitions: Record<string, Set<string>> = {
 export default function DriverPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const nav = useNavigate();
 
   const [toast, setToast] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [callBusyRideId, setCallBusyRideId] = React.useState<string | null>(null);
 
   // Safety toolkit modal
   const [safetyRide, setSafetyRide] = React.useState<{ id: string; status: string } | null>(null);
@@ -236,6 +239,22 @@ export default function DriverPage() {
     if (baseVehicle === 'motorcycle') return 'motorcycle';
     return 'cargo';
   }, [baseVehicle, carCategory]);
+
+  const startRiderCall = React.useCallback(
+    async (rideId: string) => {
+      setCallBusyRideId(rideId);
+      setToast(null);
+      try {
+        const created = await voiceCallCreateForRide({ rideId, provider: 'auto' });
+        nav(`/voice-call/${created.call.id}`);
+      } catch (e: unknown) {
+        setToast(`Call error: ${errorText(e)}`);
+      } finally {
+        setCallBusyRideId(null);
+      }
+    },
+    [nav],
+  );
 
   const driver = useQuery({ queryKey: ['driver'], queryFn: fetchDriver });
   const profile = useQuery({ queryKey: ['profile'], queryFn: fetchProfile, enabled: !!driver.data });
@@ -927,6 +946,13 @@ export default function DriverPage() {
                   <div className="flex items-center gap-2">
                     <button className="btn" onClick={() => setSafetyRide({ id: r.id, status: r.status })}>
                       {t('safety.open')}
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      disabled={callBusyRideId === r.id}
+                      onClick={() => void startRiderCall(r.id)}
+                    >
+                      Call rider
                     </button>
                     <Pill label={`status: ${r.status}`} />
                     <Pill label={`v${r.version}`} />

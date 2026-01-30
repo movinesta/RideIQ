@@ -1,6 +1,7 @@
 import React from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { errorText } from '../lib/errors';
 import { formatIQD } from '../lib/money';
@@ -11,6 +12,8 @@ import { buildWhatsAppClickToChatUrl, getWhatsAppBookingNumber } from '../lib/wh
 import SafetyToolkitModal from '../components/SafetyToolkitModal';
 import RideCheckModal from '../components/RideCheckModal';
 import { MapView, type LatLng, type MapMarker, type MapCircle } from '../components/maps/MapView';
+import { voiceCallCreateForRide } from '../lib/voiceCalls';
+import { voiceCallCreateForRide } from '../lib/voiceCalls';
 
 type RideRequestRow = {
   id: string;
@@ -101,7 +104,9 @@ async function fetchRidecheckOpen(rideId: string): Promise<RideCheckEventRow | n
 export default function RiderPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const nav = useNavigate();
   const [busy, setBusy] = React.useState(false);
+  const [callBusy, setCallBusy] = React.useState(false);
   const [toast, setToast] = React.useState<string | null>(null);
   const [safetyOpen, setSafetyOpen] = React.useState(false);
   const [mode, setMode] = React.useState<'now' | 'scheduled'>('now');
@@ -114,6 +119,22 @@ export default function RiderPage() {
   const [ridecheckOpen, setRidecheckOpen] = React.useState(false);
 
   const [nowMs, setNowMs] = React.useState(() => Date.now());
+
+  const startVoiceCallForActiveRide = React.useCallback(
+    async (rideId: string) => {
+      setCallBusy(true);
+      setToast(null);
+      try {
+        const data = await voiceCallCreateForRide({ rideId, provider: 'auto' });
+        nav(`/voice-call/${data.call.id}`);
+      } catch (e: unknown) {
+        setToast(`Call error: ${errorText(e)}`);
+      } finally {
+        setCallBusy(false);
+      }
+    },
+    [nav],
+  );
 
   React.useEffect(() => {
     const t = window.setInterval(() => setNowMs(Date.now()), 1000);
@@ -335,6 +356,20 @@ export default function RiderPage() {
   }, [qc]);
 
   const activeRide = (rides.data ?? [])[0] ?? null;
+
+  const startDriverCall = React.useCallback(async () => {
+    if (!activeRide?.id) return;
+    setCallBusy(true);
+    setToast(null);
+    try {
+      const created = await voiceCallCreateForRide({ rideId: activeRide.id, provider: 'auto' });
+      nav(`/voice-call/${created.call.id}`);
+    } catch (e: unknown) {
+      setToast(`Call error: ${errorText(e)}`);
+    } finally {
+      setCallBusy(false);
+    }
+  }, [activeRide?.id, nav]);
 
   const ridecheckQ = useQuery({
     queryKey: ['ridecheck_open', activeRide?.id],
@@ -820,6 +855,9 @@ export default function RiderPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm font-semibold">Ride {activeRide.id.slice(0, 8)}…</div>
               <div className="flex items-center gap-2">
+                <button className="btn btn-primary" disabled={callBusy} onClick={() => void startDriverCall()}>
+                  Call driver
+                </button>
                 <button className="btn" onClick={() => setSafetyOpen(true)}>
                   {t('safety.open')}
                 </button>
