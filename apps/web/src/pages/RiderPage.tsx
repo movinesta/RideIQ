@@ -13,7 +13,6 @@ import SafetyToolkitModal from '../components/SafetyToolkitModal';
 import RideCheckModal from '../components/RideCheckModal';
 import { MapView, type LatLng, type MapMarker, type MapCircle } from '../components/maps/MapView';
 import { voiceCallCreateForRide } from '../lib/voiceCalls';
-import { voiceCallCreateForRide } from '../lib/voiceCalls';
 
 type RideRequestRow = {
   id: string;
