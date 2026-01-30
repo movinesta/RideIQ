@@ -532,6 +532,7 @@ async function proxyOpenRouterResponsesSse(openrouterRes: Response, onDelta: (d:
 
   const dec = new TextDecoder();
   let buf = "";
+  let sawText = false;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -565,8 +566,21 @@ async function proxyOpenRouterResponsesSse(openrouterRes: Response, onDelta: (d:
       }
 
       // Text delta events.
-      if (parsed?.type === "response.content_part.delta" && typeof parsed?.delta === "string") {
+      if (
+        (parsed?.type === "response.content_part.delta" || parsed?.type === "response.output_text.delta")
+        && typeof parsed?.delta === "string"
+      ) {
+        sawText = true;
         onDelta(parsed.delta);
+      }
+
+      // Some providers only emit the final response payload.
+      if (parsed?.type === "response.completed" && !sawText) {
+        const completedText = extractOutputText(parsed?.response);
+        if (completedText) {
+          sawText = true;
+          onDelta(completedText);
+        }
       }
     }
   }
