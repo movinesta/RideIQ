@@ -208,8 +208,22 @@ export function extractOutputText(resp: any): string {
     if (item?.type === 'message' && Array.isArray(item?.content)) {
       for (const c of item.content) {
         if (c?.type === 'output_text' && typeof c?.text === 'string') chunks.push(c.text);
+        if (c?.type === 'output_json') {
+          if (typeof c?.json === 'string') {
+            chunks.push(c.json);
+          } else if (c?.json != null) {
+            try {
+              chunks.push(JSON.stringify(c.json));
+            } catch {
+              // ignore non-serializable payloads
+            }
+          }
+        }
       }
     }
+  }
+  if (!chunks.length && typeof resp?.output_text === 'string') {
+    chunks.push(resp.output_text);
   }
   return chunks.join('\n').trim();
 }
