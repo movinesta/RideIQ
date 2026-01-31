@@ -586,7 +586,7 @@ async function runAgentForMerchantChat(
       tool_choice: step === 0 && forcedToolValid ? { type: "function", name: forcedToolValid } : "auto",
       reasoning: { effort: "low" },
       temperature: 0.2,
-      max_output_tokens: 260,
+      max_output_tokens: 2600,
     });
 
     const calls = extractFunctionCalls(resp);
