@@ -416,7 +416,7 @@ async function formatAssistantEnvelopeWithModel(args: {
       // Response Healing helps repair malformed JSON for non-streaming schema outputs.
       plugins: [{ id: "response-healing" }],
       reasoning: { effort: "low" },
-      max_output_tokens: 260,
+      max_output_tokens: 2600,
       temperature: 0.2,
     });
 
@@ -1292,7 +1292,7 @@ async function runAgent(
       tools,
       tool_choice: step === 0 && forcedToolValid ? { type: "function", name: forcedToolValid } : "auto",
       reasoning: { effort: surface === "merchant" ? "medium" : "low" },
-      max_output_tokens: 700,
+      max_output_tokens: 7000,
       temperature: (surface === "merchant" || surface === "merchant_chat") ? 0.2 : (surface === "driver" ? 0.25 : 0.3),
     });
 
@@ -1614,7 +1614,7 @@ async function runAgentStream(
             tools,
             tool_choice: step === 0 && forcedToolValid ? { type: "function", name: forcedToolValid } : "auto",
             reasoning: { effort: surface === "merchant" ? "medium" : "low" },
-            max_output_tokens: 320,
+            max_output_tokens: 3200,
             temperature: (surface === "merchant" || surface === "merchant_chat") ? 0.2 : 0.25,
           });
 
@@ -1695,7 +1695,7 @@ async function runAgentStream(
             input,
             tool_choice: "none",
             reasoning: { effort: surface === "merchant" ? "medium" : "low" },
-            max_output_tokens: 700,
+            max_output_tokens: 7000,
             temperature: (surface === "merchant" || surface === "merchant_chat") ? 0.2 : (surface === "driver" ? 0.25 : 0.3),
           });
 
