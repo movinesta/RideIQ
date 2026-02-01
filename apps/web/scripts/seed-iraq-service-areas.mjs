@@ -458,7 +458,6 @@ async function main() {
       pickProp(p, ['adm2_name', 'ADM2_EN', 'ADM2']) || pickProp(p, ['adm2_name1']) || null;
     const adm3Name =
       pickProp(p, ['adm3_name', 'ADM3_EN', 'ADM3']) || pickProp(p, ['adm3_name1']) || null;
-    const adm2Pcode = pickProp(p, ['adm2_pcode', 'ADM2_PCODE']);
     const adm3Pcode = pickProp(p, ['adm3_pcode', 'ADM3_PCODE']);
     if (!adm3Name || !adm3Pcode) continue;
     matchedLevel++;
