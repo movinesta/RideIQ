@@ -8,13 +8,18 @@ on:
         required: true
         default: true
         type: boolean
+      seed_admin_level:
+        description: "1=ADM1 governorates, 2=ADM2 districts"
+        required: true
+        default: "2"
+        type: string
       pricing_config_id:
-        description: "Optional: force a pricing_config_id (UUID). Leave blank to auto-pick default."
+        description: "Optional: pricing_config_id UUID. Leave blank to auto-pick default active."
         required: false
         default: ""
         type: string
       cash_step_iqd:
-        description: "Default cash rounding step for all zones (IQD)."
+        description: "Default cash rounding step (IQD)."
         required: true
         default: "250"
         type: string
@@ -32,32 +37,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install pnpm FIRST (so setup-node cache: pnpm can run pnpm)
-      - name: Setup pnpm (reads version from package.json packageManager)
+      - name: Setup pnpm (reads packageManager from package.json)
         uses: pnpm/action-setup@v4
         with:
           run_install: false
 
-      - name: Setup Node.js (with pnpm cache)
+      - name: Setup Node.js (pnpm cache)
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Show versions
-        run: |
-          node -v
-          pnpm -v
+      - name: Ensure unzip exists
+        run: sudo apt-get update && sudo apt-get install -y unzip
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run seed (HDX COD-AB -> service_areas)
+      - name: Run seed
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          SEED_ADMIN_LEVEL: ${{ inputs.seed_admin_level }}
           PRICING_CONFIG_ID: ${{ inputs.pricing_config_id }}
           CASH_STEP_IQD: ${{ inputs.cash_step_iqd }}
+
+          # Optional: lock PCODES if you want, once you see them in logs:
+          # TARGET_ADM1_PCODES: "IQGxx,IQGyy,IQGzz,..."
         run: pnpm -C apps/web seed:iraq:areas
