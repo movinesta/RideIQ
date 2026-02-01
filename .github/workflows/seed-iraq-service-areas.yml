@@ -30,19 +30,15 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # 1) Install pnpm FIRST so setup-node cache: pnpm can call pnpm.
-      - name: Setup pnpm
+      # Install pnpm FIRST (so setup-node cache: pnpm can run pnpm)
+      - name: Setup pnpm (reads version from package.json packageManager)
         uses: pnpm/action-setup@v4
         with:
-          # If your repo has "packageManager": "pnpm@X.Y.Z" in package.json,
-          # you can omit version and pnpm/action-setup will use it. :contentReference[oaicite:1]{index=1}
-          version: 10
           run_install: false
 
-      - name: Setup Node.js
+      - name: Setup Node.js (with pnpm cache)
         uses: actions/setup-node@v4
         with:
           node-version: 20
