@@ -1,11 +1,10 @@
 /**
- * Seed Iraq service areas from HDX COD-AB.
+ * Robust Iraq COD-AB seeder (ADM2 districts by default).
  *
- * Key improvements:
- * - Robust resolution of target governorates (including Al-Qadisiyyah ↔ Al-Diwaniyah)
- * - Filters by ADM1 PCODE (stable) after resolving codes from dataset content
- * - Ensures ADM2 mode seeds ONLY ADM2 (districts) by excluding any feature that has adm3_pcode
- * - Always passes GeoJSON geometry fragment (feature.geometry) to PostGIS/RPC
+ * Fixes missing governorates by:
+ *  - merging ALL GeoJSON/JSON FeatureCollections in the ZIP
+ *  - resolving target ADM1 PCODES using both English + Arabic name fields + aliases
+ *  - filtering by ADM1 PCODE (stable key) rather than string name matching
  *
  * Required env:
  *   SUPABASE_URL
@@ -13,13 +12,13 @@
  *
  * Optional env:
  *   CODAB_DATASET_ID=cod-ab-irq
- *   CODAB_RESOURCE_ID=<uuid>        // force a specific HDX resource
- *   SEED_ADMIN_LEVEL=2              // 1=ADM1, 2=ADM2 (default)
- *   DRY_RUN=1
- *   PRICING_CONFIG_ID=<uuid>
+ *   CODAB_RESOURCE_ID=<uuid>   // force a specific resource
+ *   SEED_ADMIN_LEVEL=2         // 1=ADM1 governorates, 2=ADM2 districts (default 2)
+ *   DRY_RUN=1                  // logs only
+ *   PRICING_CONFIG_ID=<uuid>   // force pricing config; else auto-pick default active
  *   CASH_STEP_IQD=250
  *   CASH_STEP_BAGHDAD=250, CASH_STEP_BABIL=..., etc
- *   TARGET_ADM1_PCODES="IQG..,IQG.." // optional hard override if you want to lock it
+ *   TARGET_ADM1_PCODES="IQGxx,IQGyy,..." // optional hard-lock
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -28,7 +27,6 @@ import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
 
-// -------------------- ENV --------------------
 const required = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"];
 for (const k of required) {
   if (!process.env[k]) {
@@ -52,7 +50,7 @@ if (![1, 2].includes(SEED_ADMIN_LEVEL)) {
 const DRY_RUN = process.env.DRY_RUN === "1" || process.env.DRY_RUN === "true";
 const DEFAULT_CASH_STEP = Math.trunc(Number(process.env.CASH_STEP_IQD || 250));
 
-// Initial rollout governorates (canonical names in YOUR system)
+// Canonical names in YOUR system
 const TARGET_GOVS = [
   "Baghdad",
   "Babil",
@@ -62,8 +60,9 @@ const TARGET_GOVS = [
   "Karbala",
 ];
 
-// -------------------- HELPERS --------------------
+// ---------- helpers ----------
 function norm(s) {
+  // keep Arabic, normalize diacritics for Latin, unify spaces
   return String(s ?? "")
     .normalize("NFKD")
     .replace(/\p{Diacritic}/gu, "")
@@ -89,39 +88,32 @@ function pickProp(props, keys) {
   return null;
 }
 
-/**
- * Expanded aliasing:
- * - Karbala sometimes appears as "Kerbala" in transliterations
- * - Al-Qadisiyyah is also known as "Al Diwaniyah" (common alternate) :contentReference[oaicite:3]{index=3}
- */
 const GOV_ALIASES = new Map([
-  ["Baghdad", new Set(["baghdad"])],
-  ["Babil", new Set(["babil", "babylon"])],
+  ["Baghdad", new Set(["baghdad", "بغداد"])],
+  ["Babil", new Set(["babil", "babylon", "بابل"])],
   [
     "Al-Qadisiyyah",
     new Set([
       "al qadisiyyah",
       "al qadisiyah",
-      "al qadisiyya",
-      "al qadisiya",
       "qadisiyyah",
       "qadisiyah",
-      "qadisiyya",
-      "qadisiya",
-      // Alternate commonly used name
+      // common alternate governorate label
       "al diwaniyah",
       "diwaniyah",
-      "ad diwaniyah",
       "diwaniya",
+      // Arabic
+      "القادسية",
+      "الديوانية",
     ]),
   ],
-  ["Najaf", new Set(["najaf", "an najaf", "al najaf"])],
-  ["Karbala", new Set(["karbala", "karbalaa", "kerbala"])],
-  ["Muthanna", new Set(["muthanna", "al muthanna", "al muthana"])],
+  ["Najaf", new Set(["najaf", "an najaf", "al najaf", "النجف"])],
+  ["Muthanna", new Set(["muthanna", "al muthanna", "al muthana", "المثنى"])],
+  ["Karbala", new Set(["karbala", "karbalaa", "kerbala", "كربلاء", "كربلا"])],
 ]);
 
-function canonicalGovFromAdm1Name(adm1Name) {
-  const n = norm(adm1Name);
+function canonicalGovFromAnyName(maybeName) {
+  const n = norm(maybeName);
   for (const [canon, set] of GOV_ALIASES.entries()) {
     if (set.has(n)) return canon;
   }
@@ -172,9 +164,6 @@ function resourceSort(a, b) {
   return String(b.last_modified ?? "").localeCompare(String(a.last_modified ?? ""));
 }
 
-/**
- * CKAN Action API package_show is how we enumerate HDX dataset resources. :contentReference[oaicite:4]{index=4}
- */
 async function discoverCodabResource() {
   const pkg = await fetchJson(
     `https://data.humdata.org/api/3/action/package_show?id=${encodeURIComponent(DATASET_ID)}`
@@ -198,39 +187,17 @@ async function discoverCodabResource() {
     return forced;
   }
 
-  // Try level-labeled resource names first, otherwise fallback.
-  const want =
-    SEED_ADMIN_LEVEL === 1
-      ? /adm\s*1|adm1|admin\s*1|governorate/i
-      : /adm\s*2|adm2|admin\s*2|district|qadha|qaza/i;
-
-  const labeled = resources.filter(
-    (r) => want.test(r.name ?? "") || want.test(r.url ?? "")
-  );
-  if (labeled.length > 0) return labeled[0];
-
-  if (resources.length === 0) {
-    throw new Error(`No GeoJSON/ZIP resources found in dataset ${DATASET_ID}`);
-  }
-
-  console.warn(
-    `[warn] No ADM${SEED_ADMIN_LEVEL}-labeled resource found; falling back to most recent: ${resources[0].name}`
-  );
+  // prefer geojson zip if present
+  if (resources.length === 0) throw new Error(`No GeoJSON/ZIP resources found in ${DATASET_ID}`);
   return resources[0];
 }
 
-function scoreFeatureCollectionForAdm(fc, adminLevel) {
-  if (!fc || fc.type !== "FeatureCollection" || !Array.isArray(fc.features)) return 0;
-  const key = adminLevel === 1 ? "adm1_pcode" : "adm2_pcode";
-  let hits = 0;
-  for (const f of fc.features.slice(0, 200)) {
-    const p = f?.properties ?? {};
-    if (p[key] || p[key.toUpperCase()]) hits++;
-  }
-  return hits;
-}
-
-async function loadGeojson(resource) {
+/**
+ * Load geojson:
+ * - If ZIP: unzip, parse ALL .geojson/.json FeatureCollections, merge features.
+ * - If single: parse as JSON.
+ */
+async function loadAndMergeGeojson(resource) {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "codab-irq-"));
   const url = resource.url;
   const outPath = path.join(
@@ -240,50 +207,38 @@ async function loadGeojson(resource) {
 
   await download(url, outPath);
 
+  const merged = { type: "FeatureCollection", features: [] };
+
+  const addFC = (fc) => {
+    if (!fc || fc.type !== "FeatureCollection" || !Array.isArray(fc.features)) return;
+    merged.features.push(...fc.features);
+  };
+
   if (outPath.toLowerCase().endsWith(".zip")) {
     execFileSync("unzip", ["-q", outPath, "-d", tmpDir], { stdio: "inherit" });
 
     const entries = await fs.readdir(tmpDir, { recursive: true });
     const jsonFiles = entries
       .map((e) => String(e))
-      .filter(
-        (f) =>
-          f.toLowerCase().endsWith(".geojson") || f.toLowerCase().endsWith(".json")
-      );
+      .filter((f) => f.toLowerCase().endsWith(".geojson") || f.toLowerCase().endsWith(".json"));
 
-    if (jsonFiles.length === 0) {
-      throw new Error(`ZIP did not contain .geojson/.json files: ${url}`);
-    }
+    if (jsonFiles.length === 0) throw new Error(`ZIP had no .geojson/.json files: ${url}`);
 
-    const nameWant = SEED_ADMIN_LEVEL === 1 ? /adm\s*1|adm1/i : /adm\s*2|adm2/i;
-    const byName = jsonFiles.filter((f) => nameWant.test(f)).sort();
-    const candidates = (byName.length ? byName : jsonFiles).slice(0, 25);
-
-    let best = null;
-    let bestScore = -1;
-    for (const rel of candidates) {
+    for (const rel of jsonFiles) {
       const p = path.join(tmpDir, rel);
       try {
-        const txt = await fs.readFile(p, "utf8");
-        const fc = JSON.parse(txt);
-        const s = scoreFeatureCollectionForAdm(fc, SEED_ADMIN_LEVEL);
-        if (s > bestScore) {
-          best = fc;
-          bestScore = s;
-        }
+        const fc = JSON.parse(await fs.readFile(p, "utf8"));
+        addFC(fc);
       } catch {
-        // ignore
+        // ignore invalid JSON files
       }
     }
-
-    if (!best) {
-      const p = path.join(tmpDir, candidates[0]);
-      best = JSON.parse(await fs.readFile(p, "utf8"));
-    }
-    return best;
+  } else {
+    addFC(JSON.parse(await fs.readFile(outPath, "utf8")));
   }
 
-  return JSON.parse(await fs.readFile(outPath, "utf8"));
+  if (merged.features.length === 0) throw new Error("No features loaded from COD-AB resource");
+  return merged;
 }
 
 async function resolvePricingConfigId(supabase) {
@@ -297,7 +252,6 @@ async function resolvePricingConfigId(supabase) {
     .order("effective_from", { ascending: false })
     .limit(1)
     .maybeSingle();
-
   if (def.error) throw def.error;
   if (def.data?.id) return def.data.id;
 
@@ -308,7 +262,6 @@ async function resolvePricingConfigId(supabase) {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-
   if (any.error) throw any.error;
   if (any.data?.id) return any.data.id;
 
@@ -316,38 +269,59 @@ async function resolvePricingConfigId(supabase) {
 }
 
 /**
- * Resolve target ADM1 PCODES robustly:
- * - Build map from dataset: canonicalGov -> adm1_pcode
- * - Use adm1_name (English) + fallback adm1_ref_n when present
- * - If still missing, print all ADM1 candidates (pcode + name) so you can lock with TARGET_ADM1_PCODES.
- *
- * COD-AB is meant to be used with P-codes as stable IDs. :contentReference[oaicite:5]{index=5}
+ * Resolve target ADM1 PCODES:
+ * - Read adm1_pcode + (adm1_name / adm1_name1 / adm1_ref_n)
+ * - Map adm1_pcode -> canonical governorate name
+ * - Build target pcode set for the 6 target governorates
  */
-function resolveTargetAdm1Pcodes(geojson) {
-  const mapCanonToPcode = new Map();
-  const candidates = new Map(); // adm1_pcode -> one representative name
+function resolveTargetsByPcode(geojson) {
+  const pcodeToCanon = new Map(); // adm1_pcode -> canonicalGov
+  const canonToPcode = new Map(); // canonicalGov -> adm1_pcode
+  const catalog = new Map(); // adm1_pcode -> {en, ar}
 
   for (const f of geojson.features) {
     const p = f.properties ?? {};
     const adm1Pcode = pickProp(p, ["adm1_pcode", "ADM1_PCODE"]);
     if (!adm1Pcode) continue;
 
-    const adm1Name = pickProp(p, ["adm1_name", "ADM1_EN", "ADM1", "adm1_ref_n"]);
-    if (adm1Name) {
-      candidates.set(String(adm1Pcode), String(adm1Name));
+    const adm1En = pickProp(p, ["adm1_name", "ADM1_EN", "ADM1", "adm1_ref_n"]);
+    const adm1Ar = pickProp(p, ["adm1_name1"]);
+    if (!catalog.has(String(adm1Pcode))) {
+      catalog.set(String(adm1Pcode), { en: adm1En ?? null, ar: adm1Ar ?? null });
     }
 
-    const canon = canonicalGovFromAdm1Name(adm1Name);
-    if (canon && !mapCanonToPcode.has(canon)) {
-      mapCanonToPcode.set(canon, String(adm1Pcode));
+    const canon =
+      canonicalGovFromAnyName(adm1En) ||
+      canonicalGovFromAnyName(adm1Ar) ||
+      null;
+
+    if (canon && !canonToPcode.has(canon)) {
+      canonToPcode.set(canon, String(adm1Pcode));
+      pcodeToCanon.set(String(adm1Pcode), canon);
+    } else if (canon) {
+      pcodeToCanon.set(String(adm1Pcode), canon);
     }
   }
 
-  const missing = TARGET_GOVS.filter((g) => !mapCanonToPcode.has(g));
-  return { mapCanonToPcode, candidates, missing };
+  // allow hard override
+  const envPcodes = process.env.TARGET_ADM1_PCODES
+    ? process.env.TARGET_ADM1_PCODES.split(",").map((s) => s.trim()).filter(Boolean)
+    : null;
+
+  const targetPcodes = envPcodes?.length
+    ? new Set(envPcodes)
+    : new Set(TARGET_GOVS.map((g) => canonToPcode.get(g)).filter(Boolean));
+
+  const missing = TARGET_GOVS.filter((g) => ![...targetPcodes].includes(canonToPcode.get(g)));
+
+  return { targetPcodes, pcodeToCanon, canonToPcode, catalog, missing };
 }
 
-// -------------------- MAIN --------------------
+function uniqKeyADM2(p) {
+  return String(p?.adm2_pcode ?? p?.ADM2_PCODE ?? "");
+}
+
+// ---------- main ----------
 async function main() {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -361,78 +335,49 @@ async function main() {
   console.log(`COD-AB resource: ${resource.name} (${resource.format})`);
   console.log(`Downloading: ${resource.url}`);
 
-  const geojson = await loadGeojson(resource);
-  if (!geojson || geojson.type !== "FeatureCollection" || !Array.isArray(geojson.features)) {
-    throw new Error("Expected FeatureCollection GeoJSON");
-  }
+  const geojson = await loadAndMergeGeojson(resource);
 
-  // Optional override: lock to known ADM1 PCODES (comma-separated)
-  const envPcodes = process.env.TARGET_ADM1_PCODES
-    ? process.env.TARGET_ADM1_PCODES.split(",").map((s) => s.trim()).filter(Boolean)
-    : null;
+  const { targetPcodes, pcodeToCanon, catalog, missing } = resolveTargetsByPcode(geojson);
 
-  let targetAdm1Pcodes = null;
-
-  if (envPcodes && envPcodes.length > 0) {
-    targetAdm1Pcodes = new Set(envPcodes);
-    console.log(`Target ADM1 PCODES (from env): ${[...targetAdm1Pcodes].join(", ")}`);
-  } else {
-    const { mapCanonToPcode, candidates, missing } = resolveTargetAdm1Pcodes(geojson);
-
-    console.log(
-      `Resolved target ADM1 PCODES:\n` +
-        TARGET_GOVS.map((g) => `- ${g}: ${mapCanonToPcode.get(g) || "NOT_FOUND"}`).join("\n")
+  if (missing.length) {
+    console.warn(`[warn] Missing governorate resolution for: ${missing.join(", ")}`);
+    console.warn("[warn] ADM1 catalog sample (pcode -> en | ar):");
+    console.warn(
+      [...catalog.entries()]
+        .slice(0, 60)
+        .map(([pc, v]) => `- ${pc} -> ${v.en ?? "?"} | ${v.ar ?? "?"}`)
+        .join("\n")
     );
-
-    if (missing.length > 0) {
-      console.warn(`[warn] Missing ADM1 PCODES for: ${missing.join(", ")}`);
-      console.warn(`[warn] ADM1 candidates seen (pcode -> name sample):`);
-      console.warn(
-        [...candidates.entries()]
-          .sort((a, b) => a[0].localeCompare(b[0]))
-          .slice(0, 50)
-          .map(([pc, nm]) => `- ${pc} -> ${nm}`)
-          .join("\n")
-      );
-      console.warn(
-        `[warn] If you want to hard-lock, set TARGET_ADM1_PCODES="pcode1,pcode2,..." in your workflow.`
-      );
-    }
-
-    targetAdm1Pcodes = new Set(
-      TARGET_GOVS.map((g) => mapCanonToPcode.get(g)).filter(Boolean)
-    );
-    console.log(`Target ADM1 PCODES (auto): ${[...targetAdm1Pcodes].join(", ")}`);
+    console.warn(`[warn] You can hard-lock with TARGET_ADM1_PCODES="..." if needed.`);
   }
 
-  if (!targetAdm1Pcodes || targetAdm1Pcodes.size === 0) {
-    throw new Error("No target ADM1 PCODES resolved. Use TARGET_ADM1_PCODES override.");
-  }
+  console.log(`Target ADM1 PCODES: ${[...targetPcodes].join(", ")}`);
 
   let total = 0;
   let matchedAdm1 = 0;
   let matchedLevel = 0;
   let upserted = 0;
 
+  // De-dupe for ADM2 by adm2_pcode (ZIP merge may include duplicates)
+  const seenAdm2 = new Set();
+
   for (const f of geojson.features) {
     total++;
     const p = f.properties ?? {};
 
     const adm1Pcode = pickProp(p, ["adm1_pcode", "ADM1_PCODE"]);
-    if (!adm1Pcode || !targetAdm1Pcodes.has(String(adm1Pcode))) continue;
+    if (!adm1Pcode || !targetPcodes.has(String(adm1Pcode))) continue;
     matchedAdm1++;
 
-    const adm1Name = pickProp(p, ["adm1_name", "ADM1_EN", "ADM1", "adm1_ref_n"]) || "Unknown";
-    const canonGov = canonicalGovFromAdm1Name(adm1Name) || String(adm1Name).trim();
+    const canonGov = pcodeToCanon.get(String(adm1Pcode)) || "Unknown";
 
     const geom = f.geometry;
     if (!geom) continue;
 
     if (SEED_ADMIN_LEVEL === 1) {
-      // Require it to be an ADM1 feature (no adm2/adm3 pcodes)
       const adm2Pcode = pickProp(p, ["adm2_pcode", "ADM2_PCODE"]);
       const adm3Pcode = pickProp(p, ["adm3_pcode", "ADM3_PCODE"]);
-      if (adm2Pcode || adm3Pcode) continue;
+      if (adm2Pcode || adm3Pcode) continue; // keep only true ADM1
       matchedLevel++;
 
       const name = `${canonGov} (ADM1)`;
@@ -446,7 +391,7 @@ async function main() {
       const { error } = await supabase.rpc("admin_upsert_service_area_geojson_v1", {
         p_name: name,
         p_governorate: canonGov,
-        p_geojson: geom, // geometry fragment (best practice for PostGIS GeoJSON ingestion) :contentReference[oaicite:6]{index=6}
+        p_geojson: geom,
         p_priority: 0,
         p_is_active: true,
         p_pricing_config_id: pricingConfigId,
@@ -455,22 +400,28 @@ async function main() {
         p_surge_reason: null,
         p_cash_rounding_step_iqd: cashStep,
       });
-      if (error) {
-        console.error(`Failed upserting ${name}:`, error);
-        continue;
-      }
-      upserted++;
+
+      if (error) console.error(`Failed upserting ${name}:`, error);
+      else upserted++;
       continue;
     }
 
-    // SEED_ADMIN_LEVEL === 2 (ADM2 districts)
-    // IMPORTANT: exclude ADM3 by requiring adm2_pcode present and adm3_pcode absent.
-    const adm2Name = pickProp(p, ["adm2_name", "ADM2_EN", "ADM2"]);
+    // ADM2 districts only: require adm2_pcode and exclude adm3_pcode
+    const adm2Name =
+      pickProp(p, ["adm2_name", "ADM2_EN", "ADM2"]) ||
+      pickProp(p, ["adm2_name1"]) ||
+      null;
     const adm2Pcode = pickProp(p, ["adm2_pcode", "ADM2_PCODE"]);
     const adm3Pcode = pickProp(p, ["adm3_pcode", "ADM3_PCODE"]);
     if (!adm2Name || !adm2Pcode) continue;
-    if (adm3Pcode) continue; // don't seed subdistricts
+    if (adm3Pcode) continue;
     matchedLevel++;
+
+    const k = uniqKeyADM2(p);
+    if (k) {
+      if (seenAdm2.has(k)) continue;
+      seenAdm2.add(k);
+    }
 
     const name = `${canonGov} / ${String(adm2Name).trim()}`;
     const cashStep = cashStepForGov(canonGov);
@@ -493,11 +444,8 @@ async function main() {
       p_cash_rounding_step_iqd: cashStep,
     });
 
-    if (error) {
-      console.error(`Failed upserting ${name}:`, error);
-      continue;
-    }
-    upserted++;
+    if (error) console.error(`Failed upserting ${name}:`, error);
+    else upserted++;
   }
 
   console.log(`GeoJSON features total=${total}`);
