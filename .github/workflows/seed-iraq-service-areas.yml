@@ -18,27 +18,13 @@ on:
         required: true
         default: "250"
         type: string
-      cash_step_baghdad:
-        description: "Optional override for Baghdad cash rounding step (IQD)."
-        required: false
-        default: ""
-        type: string
-      cash_step_karbala:
-        description: "Optional override for Karbala cash rounding step (IQD)."
-        required: false
-        default: ""
-        type: string
 
 jobs:
   seed:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
-    # Minimal permissions: we only need to read repo content.
     permissions:
       contents: read
-
-    # Prevent concurrent runs clobbering each other.
     concurrency:
       group: seed-iraq-service-areas
       cancel-in-progress: false
@@ -47,6 +33,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 1) Install pnpm FIRST so setup-node cache: pnpm can call pnpm.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # If your repo has "packageManager": "pnpm@X.Y.Z" in package.json,
+          # you can omit version and pnpm/action-setup will use it. :contentReference[oaicite:1]{index=1}
+          version: 10
+          run_install: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -54,19 +49,10 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          run_install: false
-
-      - name: Configure npm registry (avoid flaky installs)
+      - name: Show versions
         run: |
-          npm config set registry https://registry.npmjs.org/
-          pnpm config set registry https://registry.npmjs.org/
-          npm config set fetch-retries 5
-          npm config set fetch-retry-mintimeout 20000
-          npm config set fetch-retry-maxtimeout 120000
-          npm config set fetch-timeout 600000
+          node -v
+          pnpm -v
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -75,19 +61,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-
-          # Inputs -> script env
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
-
-          # If provided as input, use it. Otherwise script auto-selects default.
           PRICING_CONFIG_ID: ${{ inputs.pricing_config_id }}
-
           CASH_STEP_IQD: ${{ inputs.cash_step_iqd }}
-
-          # Optional per-governorate overrides (script supports these exact names).
-          CASH_STEP_BAGHDAD: ${{ inputs.cash_step_baghdad }}
-          CASH_STEP_KARBALA: ${{ inputs.cash_step_karbala }}
-        run: |
-          echo "Running seed script..."
-          echo "DRY_RUN=$DRY_RUN"
-          pnpm -C apps/web seed:iraq:areas
+        run: pnpm -C apps/web seed:iraq:areas
