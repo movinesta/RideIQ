@@ -513,7 +513,7 @@ export default function AdminServiceAreasPage() {
         <div className="text-sm font-semibold">Existing areas</div>
         <div className="text-xs text-gray-500">You can toggle active/priority and delete. Geometry edits require bbox save above (overwrite).</div>
         <div className="mt-1 text-xs text-gray-500">
-          For Iraq COD-AB district polygons, run <code className="px-1 py-0.5 rounded bg-gray-100">pnpm -C apps/web seed:iraq:areas</code> with <code className="px-1 py-0.5 rounded bg-gray-100">SUPABASE_URL</code> and <code className="px-1 py-0.5 rounded bg-gray-100">SUPABASE_SERVICE_ROLE_KEY</code>.
+          To import Iraq COD-AB polygons, run <code className="px-1 py-0.5 rounded bg-gray-100">pnpm -C apps/web seed:iraq:areas</code> with <code className="px-1 py-0.5 rounded bg-gray-100">SUPABASE_URL</code> and <code className="px-1 py-0.5 rounded bg-gray-100">SUPABASE_SERVICE_ROLE_KEY</code>. By default it seeds ADM3 sub-districts (most accurate). Set <code className="px-1 py-0.5 rounded bg-gray-100">SEED_ADMIN_LEVEL=2</code> to seed ADM2 districts.
         </div>
 
         {areas.isLoading ? <div className="mt-3 text-sm text-gray-600">Loading…</div> : null}
