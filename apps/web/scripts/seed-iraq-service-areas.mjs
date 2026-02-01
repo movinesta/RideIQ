@@ -1,3 +1,4 @@
+/* global Buffer, URL, console, fetch, process */
 /*
   Seed Iraq service areas (polygons) from HDX COD-AB (OCHA) dataset.
 
@@ -238,7 +239,7 @@ async function main() {
       continue;
     }
 
-    const { data, error } = await supabase.rpc('admin_upsert_service_area_geojson_v1', {
+    const { error } = await supabase.rpc('admin_upsert_service_area_geojson_v1', {
       p_name: name,
       p_governorate: canonGov,
       p_geojson: geom,
