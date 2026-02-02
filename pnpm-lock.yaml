@@ -26,6 +26,12 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.90.20
         version: 5.90.20(react@19.2.4)
+      '@turf/boolean-point-in-polygon':
+        specifier: ^7.2.0
+        version: 7.3.3
+      '@turf/centroid':
+        specifier: ^7.2.0
+        version: 7.3.3
       i18next:
         specifier: ^25.8.0
         version: 25.8.0(typescript@5.9.3)
@@ -664,6 +670,21 @@ packages:
     peerDependencies:
       react: ^18 || ^19
 
+  '@turf/boolean-point-in-polygon@7.3.3':
+    resolution: {integrity: sha512-hmXV4PofLAVbVZcnKk/yp//0s65huap+L3wKGKzbLWk57fWla/eRmFKx/iQ15xGu05zylHz5cA5AfriVGZHj2g==}
+
+  '@turf/centroid@7.3.3':
+    resolution: {integrity: sha512-3vWLnF1CksLk7xTUH11IzOQJ6fOoj7zhuL8M3GTxcKruVkGat/vIm3Ye5b68sDVcE5nFDA2pYjjbL7Rfmn3/GQ==}
+
+  '@turf/helpers@7.3.3':
+    resolution: {integrity: sha512-9Ias0L1GuZPIzO6sk8jraTEuLJye6n9LYNEdw69ZGOQ6C1IigjxkPW49zmn21aTv1z27vxdVLSS3r+78DB2QnQ==}
+
+  '@turf/invariant@7.3.3':
+    resolution: {integrity: sha512-q6UDgWmtIlU+AIxt5Awnh18ZMSuNti6drCXbIBdGdgQaQ1qEiyGZDE3P9RKk6otoLXOBYecOuI0HIwf2IxurhQ==}
+
+  '@turf/meta@7.3.3':
+    resolution: {integrity: sha512-Tz1j4h70iFB5SebWWoVv/uL59x4aOngXU+d1xQDXzOCn/O6txnreGVGMcYU362c5F06yqZx38H9UFTQ553lK0w==}
+
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
 
@@ -684,6 +705,9 @@ packages:
 
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
+
+  '@types/geojson@7946.0.16':
+    resolution: {integrity: sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==}
 
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
@@ -1276,6 +1300,9 @@ packages:
     resolution: {integrity: sha512-5gTmgEY/sqK6gFXLIsQNH19lWb4ebPDLA4SdLP7dsWkIXHWlG66oPuVvXSGFPppYZz8ZDZq0dYYrbHfBCVUb1Q==}
     engines: {node: '>=12'}
 
+  point-in-polygon-hao@1.2.4:
+    resolution: {integrity: sha512-x2pcvXeqhRHlNRdhLs/tgFapAbSSe86wa/eqmj1G6pWftbEs5aVRJhRGM6FYSUERKu0PjekJzMq0gsI2XyiclQ==}
+
   postcss-value-parser@4.2.0:
     resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
 
@@ -1340,6 +1367,9 @@ packages:
   resolve-from@4.0.0:
     resolution: {integrity: sha512-pb/MYmXstAkysRFx8piNI1tGFNQIFA3vkE3Gq4EuA1dF6gHp/+vgZqsCGJapvy8N3Q+4o7FwvquPJcnZ7RYy4g==}
     engines: {node: '>=4'}
+
+  robust-predicates@3.0.2:
+    resolution: {integrity: sha512-IXgzBWvWQwE6PrDI05OvmXUIruQTcoMDzRsOd5CDvHCVLcLHMTSYvOK5Cm46kWqlV3yAbuSpBZdJ5oP5OUoStg==}
 
   rollup@4.55.1:
     resolution: {integrity: sha512-wDv/Ht1BNHB4upNbK74s9usvl7hObDnvVzknxqY/E/O3X6rW1U1rV1aENEfJ54eFZDTNo7zv1f5N4edCluH7+A==}
@@ -2032,6 +2062,38 @@ snapshots:
       '@tanstack/query-core': 5.90.20
       react: 19.2.4
 
+  '@turf/boolean-point-in-polygon@7.3.3':
+    dependencies:
+      '@turf/helpers': 7.3.3
+      '@turf/invariant': 7.3.3
+      '@types/geojson': 7946.0.16
+      point-in-polygon-hao: 1.2.4
+      tslib: 2.8.1
+
+  '@turf/centroid@7.3.3':
+    dependencies:
+      '@turf/helpers': 7.3.3
+      '@turf/meta': 7.3.3
+      '@types/geojson': 7946.0.16
+      tslib: 2.8.1
+
+  '@turf/helpers@7.3.3':
+    dependencies:
+      '@types/geojson': 7946.0.16
+      tslib: 2.8.1
+
+  '@turf/invariant@7.3.3':
+    dependencies:
+      '@turf/helpers': 7.3.3
+      '@types/geojson': 7946.0.16
+      tslib: 2.8.1
+
+  '@turf/meta@7.3.3':
+    dependencies:
+      '@turf/helpers': 7.3.3
+      '@types/geojson': 7946.0.16
+      tslib: 2.8.1
+
   '@types/babel__core@7.20.5':
     dependencies:
       '@babel/parser': 7.28.6
@@ -2061,6 +2123,8 @@ snapshots:
   '@types/deep-eql@4.0.2': {}
 
   '@types/estree@1.0.8': {}
+
+  '@types/geojson@7946.0.16': {}
 
   '@types/json-schema@7.0.15': {}
 
@@ -2666,6 +2730,10 @@ snapshots:
 
   picomatch@4.0.3: {}
 
+  point-in-polygon-hao@1.2.4:
+    dependencies:
+      robust-predicates: 3.0.2
+
   postcss-value-parser@4.2.0: {}
 
   postcss@8.5.6:
@@ -2713,6 +2781,8 @@ snapshots:
   react@19.2.4: {}
 
   resolve-from@4.0.0: {}
+
+  robust-predicates@3.0.2: {}
 
   rollup@4.55.1:
     dependencies:
