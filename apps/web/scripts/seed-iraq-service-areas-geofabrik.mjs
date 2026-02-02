@@ -103,6 +103,28 @@ async function download(url, outFile) {
   await fs.writeFile(outFile, buf);
 }
 
+async function shapefileHasAdminLevels(shpPath, maxSamples = 25) {
+  const source = await shapefile.open(shpPath);
+  let sampled = 0;
+  while (sampled < maxSamples) {
+    const sample = await source.read();
+    if (sample.done) break;
+    sampled += 1;
+    if (!sample.value?.properties) continue;
+    const props = sample.value.properties;
+    if (
+      Object.prototype.hasOwnProperty.call(props, 'admin_level') ||
+      Object.prototype.hasOwnProperty.call(props, 'admin_lvl') ||
+      Object.prototype.hasOwnProperty.call(props, 'adminlevel')
+    ) {
+      return true;
+    }
+    const level = parseAdminLevel(props);
+    if (Number.isFinite(level)) return true;
+  }
+  return false;
+}
+
 async function pickAdminShapefile(shpFiles, tmpDir) {
   const byName = (pattern) => shpFiles.find((f) => pattern.test(f));
   const preferred = [
@@ -118,12 +140,7 @@ async function pickAdminShapefile(shpFiles, tmpDir) {
   for (const rel of candidates) {
     const shpPath = path.join(tmpDir, rel);
     try {
-      const source = await shapefile.open(shpPath);
-      const sample = await source.read();
-      if (sample?.value?.properties) {
-        const level = parseAdminLevel(sample.value.properties);
-        if (Number.isFinite(level)) return rel;
-      }
+      if (await shapefileHasAdminLevels(shpPath)) return rel;
     } catch {
       // ignore and continue
     }
