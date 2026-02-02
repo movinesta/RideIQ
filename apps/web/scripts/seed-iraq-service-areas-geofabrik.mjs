@@ -1,13 +1,13 @@
 /**
- * Iraq service area seeder (all admin levels) using Geofabrik OSM shapefiles.
+ * Iraq service area seeder (all admin levels) using Geofabrik OSM PBF extracts.
  *
  * Required env:
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_ROLE_KEY
  *
  * Optional env:
- *   GEOFABRIK_SHP_URL=https://download.geofabrik.de/asia/iraq-latest-free.shp.zip
- *   TARGET_ADMIN_LEVELS=2,4,6,8   // comma-separated; default = all available
+ *   GEOFABRIK_PBF_URL=https://download.geofabrik.de/asia/iraq-latest.osm.pbf
+ *   TARGET_ADMIN_LEVELS=4,6,8     // comma-separated; default = all available
  *   DRY_RUN=1
  *   PRICING_CONFIG_ID=<uuid>
  *   CASH_STEP_IQD=250
@@ -20,7 +20,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
-import shapefile from 'shapefile';
 
 const required = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
 for (const k of required) {
@@ -33,9 +32,8 @@ for (const k of required) {
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const SHP_URL =
-  process.env.GEOFABRIK_SHP_URL ||
-  'https://download.geofabrik.de/asia/iraq-latest-free.shp.zip';
+const PBF_URL =
+  process.env.GEOFABRIK_PBF_URL || 'https://download.geofabrik.de/asia/iraq-latest.osm.pbf';
 
 const DRY_RUN = process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true';
 const DEFAULT_CASH_STEP = Math.trunc(Number(process.env.CASH_STEP_IQD || 250));
@@ -83,15 +81,14 @@ function parseAdminLevel(props) {
   return Number.isFinite(num) ? num : null;
 }
 
-function resolveArabicName(props) {
-  const nameAr = pickProp(props, [
-    'name_ar',
+function resolveArabicName(props, tags) {
+  const nameAr = pickProp(tags, ['name:ar', 'name_ar', 'namear']) ?? pickProp(props, [
     'name:ar',
+    'name_ar',
+    'namear',
     'name_ara',
     'name_arabic',
     'name_arab',
-    'namear',
-    'nameara',
   ]);
   return nameAr ? String(nameAr).trim() : null;
 }
@@ -101,52 +98,6 @@ async function download(url, outFile) {
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
   const buf = Buffer.from(await res.arrayBuffer());
   await fs.writeFile(outFile, buf);
-}
-
-async function shapefileHasAdminLevels(shpPath, maxSamples = 25) {
-  const source = await shapefile.open(shpPath);
-  let sampled = 0;
-  while (sampled < maxSamples) {
-    const sample = await source.read();
-    if (sample.done) break;
-    sampled += 1;
-    if (!sample.value?.properties) continue;
-    const props = sample.value.properties;
-    if (
-      Object.prototype.hasOwnProperty.call(props, 'admin_level') ||
-      Object.prototype.hasOwnProperty.call(props, 'admin_lvl') ||
-      Object.prototype.hasOwnProperty.call(props, 'adminlevel')
-    ) {
-      return true;
-    }
-    const level = parseAdminLevel(props);
-    if (Number.isFinite(level)) return true;
-  }
-  return false;
-}
-
-async function pickAdminShapefile(shpFiles, tmpDir) {
-  const byName = (pattern) => shpFiles.find((f) => pattern.test(f));
-  const preferred = [
-    byName(/gis_osm_admin_a_free_1\.shp$/i),
-    byName(/admin_a.*free.*\.shp$/i),
-    byName(/admin.*a.*free.*\.shp$/i),
-    byName(/admin.*\.shp$/i),
-    byName(/boundary.*\.shp$/i),
-  ].filter(Boolean);
-
-  const candidates = [...preferred, ...shpFiles.filter((f) => !preferred.includes(f))];
-
-  for (const rel of candidates) {
-    const shpPath = path.join(tmpDir, rel);
-    try {
-      if (await shapefileHasAdminLevels(shpPath)) return rel;
-    } catch {
-      // ignore and continue
-    }
-  }
-
-  return shpFiles[0];
 }
 
 function ensurePolygonGeometry(geom) {
@@ -189,17 +140,6 @@ function priorityForAdminLevel(level) {
   return Math.max(1, Math.trunc(level) * 10);
 }
 
-async function loadAdminFeatures(shpPath) {
-  const source = await shapefile.open(shpPath);
-  const features = [];
-  while (true) {
-    const result = await source.read();
-    if (result.done) break;
-    if (result.value?.geometry) features.push(result.value);
-  }
-  return features;
-}
-
 async function main() {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -208,33 +148,41 @@ async function main() {
   const pricingConfigId = await resolvePricingConfigId(supabase);
   console.log(`Using pricing_config_id=${pricingConfigId}`);
   console.log(`DRY_RUN=${DRY_RUN ? '1' : '0'}`);
-  console.log(`Downloading: ${SHP_URL}`);
+  console.log(`Downloading: ${PBF_URL}`);
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'iraq-geofabrik-'));
-  const zipPath = path.join(tmpDir, path.basename(new URL(SHP_URL).pathname));
-  await download(SHP_URL, zipPath);
+  const pbfPath = path.join(tmpDir, path.basename(new URL(PBF_URL).pathname));
+  await download(PBF_URL, pbfPath);
 
-  execFileSync('unzip', ['-q', zipPath, '-d', tmpDir], { stdio: 'inherit' });
-  const entries = await fs.readdir(tmpDir, { recursive: true });
-  const shpFiles = entries
-    .map((e) => String(e))
-    .filter((f) => f.toLowerCase().endsWith('.shp'));
-
-  if (shpFiles.length === 0) {
-    throw new Error(`No .shp files found in ${SHP_URL}`);
+  try {
+    execFileSync('osmium', ['--version'], { stdio: 'ignore' });
+  } catch {
+    throw new Error('osmium is required (install osmium-tool) to extract admin boundaries.');
   }
 
-  const shpRel = await pickAdminShapefile(shpFiles, tmpDir);
-  const shpPath = path.join(tmpDir, shpRel);
-  console.log(`Using shapefile: ${shpRel}`);
+  const filteredPbf = path.join(tmpDir, 'iraq-admin.osm.pbf');
+  const geojsonPath = path.join(tmpDir, 'iraq-admin.geojson');
 
-  const features = await loadAdminFeatures(shpPath);
+  execFileSync(
+    'osmium',
+    ['tags-filter', '--add-referenced', '-o', filteredPbf, pbfPath, 'r/boundary=administrative'],
+    { stdio: 'inherit' },
+  );
+
+  execFileSync('osmium', ['export', '-f', 'geojson', '-o', geojsonPath, filteredPbf], {
+    stdio: 'inherit',
+  });
+
+  const geojson = JSON.parse(await fs.readFile(geojsonPath, 'utf8'));
+  const features = Array.isArray(geojson.features) ? geojson.features : [];
   const admin4 = [];
 
   for (const feature of features) {
-    const level = parseAdminLevel(feature.properties ?? {});
+    const props = feature.properties ?? {};
+    const tags = props.tags ?? {};
+    const level = parseAdminLevel(tags) ?? parseAdminLevel(props);
     if (level !== 4) continue;
-    const nameAr = resolveArabicName(feature.properties ?? {});
+    const nameAr = resolveArabicName(props, tags);
     const geom = ensurePolygonGeometry(feature.geometry);
     if (!nameAr || !geom) continue;
     admin4.push({ name: normalizeName(nameAr), geometry: geom });
@@ -254,7 +202,8 @@ async function main() {
   for (const feature of features) {
     total++;
     const props = feature.properties ?? {};
-    const level = parseAdminLevel(props);
+    const tags = props.tags ?? {};
+    const level = parseAdminLevel(tags) ?? parseAdminLevel(props);
     if (!level) {
       skipped++;
       continue;
@@ -270,7 +219,7 @@ async function main() {
       continue;
     }
 
-    const nameAr = resolveArabicName(props);
+    const nameAr = resolveArabicName(props, tags);
     if (!nameAr) {
       missingArabic++;
       skipped++;
@@ -296,7 +245,7 @@ async function main() {
     const normalized = normalizeName(baseName);
     let name = baseName;
     if (set.has(normalized)) {
-      const osmId = pickProp(props, ['osm_id', 'osm_way_id', 'osm_rel_id']);
+      const osmId = pickProp(props, ['osm_id', 'osm_way_id', 'osm_rel_id']) ?? tags.osm_id;
       name = osmId ? `${baseName} (${osmId})` : `${baseName} (${level})`;
     }
     set.add(normalizeName(name));

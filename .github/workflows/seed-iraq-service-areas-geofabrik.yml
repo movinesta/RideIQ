@@ -16,10 +16,10 @@ on:
         description: 'Optional pricing_configs.id UUID to attach to created service areas (blank = auto-pick default active)'
         required: false
         default: ''
-      geofabrik_shp_url:
-        description: 'Override Geofabrik shapefile URL'
+      geofabrik_pbf_url:
+        description: 'Override Geofabrik PBF URL'
         required: false
-        default: 'https://download.geofabrik.de/asia/iraq-latest-free.shp.zip'
+        default: 'https://download.geofabrik.de/asia/iraq-latest.osm.pbf'
 
 jobs:
   seed:
@@ -44,8 +44,8 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Ensure unzip exists
-        run: sudo apt-get update && sudo apt-get install -y unzip
+      - name: Ensure osmium exists
+        run: sudo apt-get update && sudo apt-get install -y osmium-tool
 
       - name: Validate required secrets
         env:
@@ -65,5 +65,5 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
           TARGET_ADMIN_LEVELS: ${{ inputs.target_admin_levels }}
           PRICING_CONFIG_ID: ${{ inputs.pricing_config_id }}
-          GEOFABRIK_SHP_URL: ${{ inputs.geofabrik_shp_url }}
+          GEOFABRIK_PBF_URL: ${{ inputs.geofabrik_pbf_url }}
         run: pnpm -C apps/web seed:iraq:areas:geofabrik
