@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "seed:iraq:areas": "node scripts/seed-iraq-service-areas.mjs",
+    "seed:iraq:areas:geofabrik": "node scripts/seed-iraq-service-areas-geofabrik.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
@@ -16,11 +17,14 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.93.2",
     "@tanstack/react-query": "^5.90.20",
+    "@turf/boolean-point-in-polygon": "^7.2.0",
+    "@turf/centroid": "^7.2.0",
     "i18next": "^25.8.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-i18next": "^16.5.4",
     "react-router-dom": "^7.13.0",
+    "shapefile": "^0.6.6",
     "zod": "^4.3.6"
   },
   "devDependencies": {
