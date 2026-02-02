@@ -70,14 +70,29 @@ function normalizeName(value) {
 }
 
 function parseAdminLevel(props) {
-  const raw = pickProp(props, ['admin_level', 'admin_lvl', 'adminlevel', 'admin_levl']);
+  const raw = pickProp(props, [
+    'admin_level',
+    'admin_lvl',
+    'adminlevel',
+    'admin_levl',
+    'admin_leve',
+    'admin_lev',
+  ]);
   if (raw == null) return null;
   const num = Number.parseInt(String(raw).trim(), 10);
   return Number.isFinite(num) ? num : null;
 }
 
 function resolveArabicName(props) {
-  const nameAr = pickProp(props, ['name_ar', 'name:ar', 'name_ara', 'name_arabic']);
+  const nameAr = pickProp(props, [
+    'name_ar',
+    'name:ar',
+    'name_ara',
+    'name_arabic',
+    'name_arab',
+    'namear',
+    'nameara',
+  ]);
   return nameAr ? String(nameAr).trim() : null;
 }
 
@@ -91,6 +106,8 @@ async function download(url, outFile) {
 function pickAdminShapefile(shpFiles) {
   const byName = (pattern) => shpFiles.find((f) => pattern.test(f));
   return (
+    byName(/gis_osm_admin_a_free_1\.shp$/i) ||
+    byName(/admin_a.*free.*\.shp$/i) ||
     byName(/admin.*a.*free.*\.shp$/i) ||
     byName(/admin.*\.shp$/i) ||
     byName(/boundary.*\.shp$/i) ||
