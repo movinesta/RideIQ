@@ -103,16 +103,33 @@ async function download(url, outFile) {
   await fs.writeFile(outFile, buf);
 }
 
-function pickAdminShapefile(shpFiles) {
+async function pickAdminShapefile(shpFiles, tmpDir) {
   const byName = (pattern) => shpFiles.find((f) => pattern.test(f));
-  return (
-    byName(/gis_osm_admin_a_free_1\.shp$/i) ||
-    byName(/admin_a.*free.*\.shp$/i) ||
-    byName(/admin.*a.*free.*\.shp$/i) ||
-    byName(/admin.*\.shp$/i) ||
-    byName(/boundary.*\.shp$/i) ||
-    shpFiles[0]
-  );
+  const preferred = [
+    byName(/gis_osm_admin_a_free_1\.shp$/i),
+    byName(/admin_a.*free.*\.shp$/i),
+    byName(/admin.*a.*free.*\.shp$/i),
+    byName(/admin.*\.shp$/i),
+    byName(/boundary.*\.shp$/i),
+  ].filter(Boolean);
+
+  const candidates = [...preferred, ...shpFiles.filter((f) => !preferred.includes(f))];
+
+  for (const rel of candidates) {
+    const shpPath = path.join(tmpDir, rel);
+    try {
+      const source = await shapefile.open(shpPath);
+      const sample = await source.read();
+      if (sample?.value?.properties) {
+        const level = parseAdminLevel(sample.value.properties);
+        if (Number.isFinite(level)) return rel;
+      }
+    } catch {
+      // ignore and continue
+    }
+  }
+
+  return shpFiles[0];
 }
 
 function ensurePolygonGeometry(geom) {
@@ -190,7 +207,7 @@ async function main() {
     throw new Error(`No .shp files found in ${SHP_URL}`);
   }
 
-  const shpRel = pickAdminShapefile(shpFiles);
+  const shpRel = await pickAdminShapefile(shpFiles, tmpDir);
   const shpPath = path.join(tmpDir, shpRel);
   console.log(`Using shapefile: ${shpRel}`);
 
