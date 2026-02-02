@@ -1,0 +1,69 @@
+name: seed-iraq-service-areas-geofabrik
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'If true, logs what would be inserted without writing to the DB'
+        required: true
+        default: true
+        type: boolean
+      target_admin_levels:
+        description: 'Comma-separated admin levels to seed (blank = all levels)'
+        required: false
+        default: ''
+      pricing_config_id:
+        description: 'Optional pricing_configs.id UUID to attach to created service areas (blank = auto-pick default active)'
+        required: false
+        default: ''
+      geofabrik_pbf_url:
+        description: 'Override Geofabrik PBF URL'
+        required: false
+        default: 'https://download.geofabrik.de/asia/iraq-latest.osm.pbf'
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Ensure osmium exists
+        run: sudo apt-get update && sudo apt-get install -y osmium-tool
+
+      - name: Validate required secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then echo "Missing secret SUPABASE_URL"; exit 1; fi
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then echo "Missing secret SUPABASE_SERVICE_ROLE_KEY"; exit 1; fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Seed Iraq service areas (Geofabrik)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          TARGET_ADMIN_LEVELS: ${{ inputs.target_admin_levels }}
+          PRICING_CONFIG_ID: ${{ inputs.pricing_config_id }}
+          GEOFABRIK_PBF_URL: ${{ inputs.geofabrik_pbf_url }}
+        run: pnpm -C apps/web seed:iraq:areas:geofabrik
