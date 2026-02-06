@@ -230,9 +230,16 @@ export async function withRequestContext(
 
   const isOptions = req.method === 'OPTIONS';
 
-  if (!isOptions) {
-    ctx.log('request.start', { method: req.method, path: new URL(req.url).pathname });
+  // Handle CORS preflight centrally so individual functions don't need boilerplate.
+  if (isOptions) {
+    const headers = new Headers(getCorsHeadersForRequest(req));
+    headers.set('x-request-id', requestId);
+    headers.set('x-trace-id', traceId);
+    if (correlationId) headers.set('x-correlation-id', correlationId);
+    return new Response(null, { status: 204, headers });
   }
+
+  ctx.log('request.start', { method: req.method, path: new URL(req.url).pathname });
 
   try {
     const res = await handler(ctx);

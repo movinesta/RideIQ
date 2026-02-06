@@ -11,8 +11,8 @@ type DriverAcceptBody = {
 
 Deno.serve((req) =>
   withRequestContext('driver-accept', req, async (_ctx) => {
-const preflight = handleOptions(req);
-  if (preflight) return preflight;
+    const preflight = handleOptions(req);
+    if (preflight) return preflight;
 
   if (req.method !== 'POST') {
     return errorJson('Method not allowed', 405);
@@ -31,10 +31,12 @@ const preflight = handleOptions(req);
     limit: 20,
   });
   if (!rl.allowed) {
+    const rlHeaders = buildRateLimitHeaders({ limit: 20, remaining: rl.remaining, resetAt: rl.resetAt });
+    rlHeaders['Retry-After'] = String(Math.max(1, Math.ceil((new Date(rl.resetAt).getTime() - Date.now()) / 1000)));
     return json(
       { error: 'Rate limit exceeded', code: 'RATE_LIMITED', reset_at: rl.resetAt, remaining: rl.remaining },
       429,
-      { 'Retry-After': String(Math.max(1, Math.ceil((new Date(rl.resetAt).getTime() - Date.now()) / 1000))) },
+      rlHeaders,
     );
   }
 
@@ -76,6 +78,7 @@ const preflight = handleOptions(req);
     payload: { status: row?.status },
   });
 
-  return json({ ride: row, rate_limit: { remaining: rl.remaining, reset_at: rl.resetAt } });
+  const rlHeaders = buildRateLimitHeaders({ limit: 20, remaining: rl.remaining, resetAt: rl.resetAt });
+  return json({ ride: row, rate_limit: { remaining: rl.remaining, reset_at: rl.resetAt } }, 200, rlHeaders);
   }),
 );
