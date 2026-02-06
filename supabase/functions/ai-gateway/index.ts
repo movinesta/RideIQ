@@ -13,8 +13,8 @@ import {
   type ToolDef,
 } from "../_shared/openrouter.ts";
 
-import {
 import { withRequestContext } from "../_shared/requestContext.ts";
+import {
   AssistantEnvelope,
   envelopeJsonSchema,
   heuristicKindFromMessage,
