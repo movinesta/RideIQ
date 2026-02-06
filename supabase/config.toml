@@ -1,0 +1,252 @@
+project_id = "rideshare-local"
+
+[api]
+port = 54321
+schemas = ["public", "storage", "auth"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 17
+
+[studio]
+port = 54323
+
+[inbucket]
+port = 54324
+
+[auth]
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173", "http://127.0.0.1:5173"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.hook.send_sms]
+enabled = true
+uri = "https://ehtimvlmpghstlzvfipx.supabase.co/functions/v1/sms-hook"
+secrets = "env(AUTH_HOOK_SECRET)"
+# Edge Functions auth model
+# - Default: verify_jwt = true (Supabase gateway validates the user JWT before executing the function).
+# - Disable verify_jwt ONLY for endpoints that must be callable without a user JWT:
+#   * payment provider callbacks / redirects
+#   * public share/view endpoints
+#   * cron endpoints protected by CRON_SECRET (or similar)
+#
+# Notes:
+# - Authenticated endpoints should still verify the user inside the function (e.g. requireUser()) for explicitness.
+# - Supabase docs have updated guidance around verify_jwt and JWT signing keys.
+
+# Payment provider callbacks / redirects (no user JWT)
+[functions.zaincash-return]
+verify_jwt = false
+
+[functions.ai-gateway]
+verify_jwt = false
+
+[functions.driver-location-update]
+verify_jwt = false
+
+[functions.admin-users-grant]
+verify_jwt = false
+
+[functions.admin-users-list]
+verify_jwt = false
+
+[functions.trip-share-create]
+verify_jwt = false
+
+[functions.ridecheck-respond]
+verify_jwt = false
+
+[functions.safety-sos]
+verify_jwt = false
+
+[functions.ride-transition]
+verify_jwt = false
+
+[functions.driver-accept]
+verify_jwt = false
+
+[functions.topup-create]
+verify_jwt = false
+
+[functions.maps-config]
+verify_jwt = false
+
+[functions.topup-check]
+verify_jwt = false
+
+[functions.drivers-nearby]
+verify_jwt = false
+
+[functions.scheduled-ride-create]
+verify_jwt = false
+
+[functions.match-ride]
+verify_jwt = false
+
+[functions.scheduled-ride-list]
+verify_jwt = false
+
+[functions.zaincash-webhook]
+verify_jwt = false
+
+[functions.qicard-notify]
+verify_jwt = false
+
+[functions.qicard-return]
+verify_jwt = false
+
+[functions.asiapay-notify]
+verify_jwt = false
+
+[functions.asiapay-return]
+verify_jwt = false
+
+[functions.fare-engine]
+verify_jwt = false
+
+# Wallet/UI config endpoint (we validate auth inside the function; gateway JWT verification disabled)
+[functions.payments-config]
+verify_jwt = false
+
+
+# Public view endpoints (no user JWT)
+[functions.trip-share-view]
+verify_jwt = false
+
+
+# Public support content (read-only, no user JWT)
+[functions.support-articles]
+verify_jwt = false
+
+[functions.support-article-detail]
+verify_jwt = false
+
+# Scheduled / maintenance endpoints (protected by CRON_SECRET)
+[functions.topup-reconcile]
+verify_jwt = false
+
+[functions.fraud-score-runner]
+verify_jwt = false
+
+[functions.expire-rides]
+verify_jwt = false
+
+[functions.driver-stats-rollup]
+verify_jwt = false
+
+[functions.driver-leaderboard-refresh]
+verify_jwt = false
+
+[functions.stats-rollup]
+verify_jwt = false
+
+[functions.notifications-dispatch]
+verify_jwt = false
+
+
+[functions.promotion-notify]
+verify_jwt = false
+
+[functions.interest-seed]
+verify_jwt = false
+
+[functions.trusted-contacts-dispatch]
+verify_jwt = false
+
+[functions.qicard-withdraw-webhook]
+verify_jwt = false
+
+[functions.asiapay-withdraw-webhook]
+verify_jwt = false
+
+[functions.zaincash-withdraw-webhook]
+verify_jwt = false
+
+[functions.payout-job-runner]
+verify_jwt = false
+
+[functions.payout-job-action]
+verify_jwt = false
+
+[functions.sms-hook]
+verify_jwt = false
+[functions.voice-call-create]
+verify_jwt = false
+
+[functions.voice-call-join]
+verify_jwt = false
+
+[functions.voice-call-end]
+verify_jwt = false
+
+# Merchant chat webhook (AI autopilot) - callable without user JWT; protected by shared secret header.
+[functions.merchant-chat-autoreply]
+verify_jwt = false
+
+[functions.webhook-job-runner]
+verify_jwt = false
+
+# Ops alert evaluation (cron endpoint protected by CRON_SECRET)
+[functions.ops-alert-runner]
+verify_jwt = false
+
+# Maintenance: prune expired API rate-limit windows (cron-secret protected)
+[functions.rate-limit-prune]
+verify_jwt = false
+
+# Ops dashboard (admin-only; verify JWT internally via requireAdmin)
+[functions.ops-dashboard]
+verify_jwt = false
+
+# Session 11: Family / guardian / safety functions (validate JWT internally via requireUser)
+[functions.family-create]
+verify_jwt = false
+
+[functions.family-invite]
+verify_jwt = false
+
+[functions.family-accept-invite]
+verify_jwt = false
+
+[functions.family-policy-update]
+verify_jwt = false
+
+[functions.trip-guardian-track]
+verify_jwt = false
+
+[functions.safety-report]
+verify_jwt = false
+
+# Session 12: Live activity / trip broadcast functions
+[functions.live-activity]
+verify_jwt = false
+
+[functions.trip-broadcast-runner]
+verify_jwt = false
+
+# Session 13: Commerce / AI concierge functions
+[functions.concierge]
+verify_jwt = false
+
+[functions.fee-breakdown]
+verify_jwt = false
+
+# Session 14: Driver stickiness functions
+[functions.shift-planner]
+verify_jwt = false
+
+[functions.hotspot-guidance]
+verify_jwt = false
+
+[functions.earnings-coach]
+verify_jwt = false
+
+# Session 15: Passkey authentication functions
+[functions.passkey-register]
+verify_jwt = false
+
+[functions.passkey-authenticate]
+verify_jwt = false

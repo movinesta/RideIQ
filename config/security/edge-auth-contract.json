@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "description": "Auth contract for Supabase Edge Functions. Used by scripts/audit-edge-functions.mjs to enforce verify_jwt=false guards.",
+  "functions": {
+    "admin-users-grant": {
+      "auth": "user_jwt"
+    },
+    "admin-users-list": {
+      "auth": "user_jwt"
+    },
+    "ai-gateway": {
+      "auth": "user_jwt"
+    },
+    "asiapay-notify": {
+      "auth": "webhook_signature"
+    },
+    "asiapay-return": {
+      "auth": "return_handler"
+    },
+    "asiapay-withdraw-webhook": {
+      "auth": "webhook_signature"
+    },
+    "driver-accept": {
+      "auth": "user_jwt"
+    },
+    "driver-leaderboard-refresh": {
+      "auth": "cron_secret"
+    },
+    "driver-location-update": {
+      "auth": "user_jwt"
+    },
+    "driver-stats-rollup": {
+      "auth": "cron_secret"
+    },
+    "drivers-nearby": {
+      "auth": "user_jwt"
+    },
+    "expire-rides": {
+      "auth": "cron_secret"
+    },
+    "fare-engine": {
+      "auth": "user_jwt"
+    },
+    "fraud-score-runner": {
+      "auth": "cron_secret"
+    },
+    "interest-seed": {
+      "auth": "webhook_signature"
+    },
+    "maps-config": {
+      "auth": "public_readonly"
+    },
+    "match-ride": {
+      "auth": "user_jwt"
+    },
+    "merchant-chat-autoreply": {
+      "auth": "webhook_signature"
+    },
+    "notifications-dispatch": {
+      "auth": "webhook_signature"
+    },
+    "ops-alert-runner": {
+      "auth": "cron_secret"
+    },
+    "rate-limit-prune": {
+      "auth": "cron_secret"
+    },
+    "ops-dashboard": {
+      "auth": "user_jwt"
+    },
+    "payments-config": {
+      "auth": "user_jwt"
+    },
+    "payout-job-runner": {
+      "auth": "cron_secret"
+    },
+    "payout-job-action": {
+      "auth": "user_jwt"
+    },
+    "promotion-notify": {
+      "auth": "webhook_signature"
+    },
+    "qicard-notify": {
+      "auth": "webhook_signature"
+    },
+    "qicard-return": {
+      "auth": "return_handler"
+    },
+    "qicard-withdraw-webhook": {
+      "auth": "webhook_signature"
+    },
+    "ride-transition": {
+      "auth": "user_jwt"
+    },
+    "ridecheck-respond": {
+      "auth": "user_jwt"
+    },
+    "safety-sos": {
+      "auth": "user_jwt"
+    },
+    "scheduled-ride-create": {
+      "auth": "user_jwt"
+    },
+    "scheduled-ride-list": {
+      "auth": "user_jwt"
+    },
+    "sms-hook": {
+      "auth": "webhook_signature"
+    },
+    "stats-rollup": {
+      "auth": "cron_secret"
+    },
+    "support-article-detail": {
+      "auth": "public_readonly"
+    },
+    "support-articles": {
+      "auth": "public_readonly"
+    },
+    "topup-check": {
+      "auth": "user_jwt"
+    },
+    "topup-create": {
+      "auth": "user_jwt"
+    },
+    "topup-reconcile": {
+      "auth": "cron_secret"
+    },
+    "trip-share-create": {
+      "auth": "user_jwt"
+    },
+    "trip-share-view": {
+      "auth": "token_public"
+    },
+    "trusted-contacts-dispatch": {
+      "auth": "cron_secret"
+    },
+    "voice-call-create": {
+      "auth": "user_jwt"
+    },
+    "voice-call-end": {
+      "auth": "user_jwt"
+    },
+    "voice-call-join": {
+      "auth": "user_jwt"
+    },
+    "webhook-job-runner": {
+      "auth": "cron_secret"
+    },
+    "zaincash-return": {
+      "auth": "return_handler"
+    },
+    "zaincash-webhook": {
+      "auth": "webhook_signature"
+    },
+    "zaincash-withdraw-webhook": {
+      "auth": "webhook_signature"
+    },
+    "family-create": {
+      "auth": "user_jwt"
+    },
+    "family-invite": {
+      "auth": "user_jwt"
+    },
+    "family-accept-invite": {
+      "auth": "user_jwt"
+    },
+    "family-policy-update": {
+      "auth": "user_jwt"
+    },
+    "trip-guardian-track": {
+      "auth": "user_jwt"
+    },
+    "safety-report": {
+      "auth": "user_jwt"
+    },
+    "live-activity": {
+      "auth": "user_jwt"
+    },
+    "trip-broadcast-runner": {
+      "auth": "cron_secret"
+    },
+    "concierge": {
+      "auth": "user_jwt"
+    },
+    "fee-breakdown": {
+      "auth": "optional_jwt"
+    },
+    "shift-planner": {
+      "auth": "user_jwt"
+    },
+    "hotspot-guidance": {
+      "auth": "user_jwt"
+    },
+    "earnings-coach": {
+      "auth": "user_jwt"
+    },
+    "passkey-register": {
+      "auth": "user_jwt"
+    },
+    "passkey-authenticate": {
+      "auth": "user_jwt"
+    }
+  }
+}

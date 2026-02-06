@@ -1,0 +1,150 @@
+
+BEGIN;
+SELECT plan(2);
+
+-- Check Anon Allowlist
+SELECT results_eq(
+    $$
+    SELECT proname
+    FROM pg_proc p
+    JOIN pg_namespace n ON p.pronamespace = n.oid
+    WHERE n.nspname = 'public'
+    AND has_function_privilege('anon', p.oid, 'EXECUTE')
+    AND proname NOT LIKE 'test_%' -- Exclude test functions
+    ORDER BY proname;
+    $$,
+    $$
+    VALUES
+        -- BEGIN RPC_ALLOWLIST_ANON_TEST
+        'resolve_service_area'
+-- END RPC_ALLOWLIST_ANON_TEST
+    $$,
+    'Anon role should only have execute permission on allowlisted functions'
+);
+
+-- Check Authenticated Allowlist
+SELECT results_eq(
+    $$
+    SELECT proname
+    FROM pg_proc p
+    JOIN pg_namespace n ON p.pronamespace = n.oid
+    WHERE n.nspname = 'public'
+    AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
+    AND proname NOT LIKE 'test_%'
+    ORDER BY proname;
+    $$,
+    $$
+    VALUES
+        -- BEGIN RPC_ALLOWLIST_AUTHENTICATED_TEST
+        'achievement_claim',
+        'admin_cash_agent_create_v1',
+        'admin_cash_agent_list_v1',
+        'admin_cash_agent_next_doc_no_v1',
+        'admin_cash_agent_set_active_v1',
+        'admin_cashbox_close_day_v1',
+        'admin_cashbox_reconciliation_v1',
+        'admin_clone_pricing_config_v1',
+        'admin_create_service_area_bbox_v2',
+        'admin_create_service_area_bbox_v3',
+        'admin_merchant_commission_clear_v1',
+        'admin_merchant_commission_clear_v2',
+        'admin_merchant_commission_list_v1',
+        'admin_merchant_commission_list_v2',
+        'admin_merchant_commission_set_v1',
+        'admin_merchant_commission_set_v2',
+        'admin_platform_fee_list_v1',
+        'admin_platform_fee_set_v1',
+        'admin_reconciliation_daily_v1',
+        'admin_record_ride_refund',
+        'admin_ridecheck_escalate',
+        'admin_ridecheck_resolve',
+        'admin_set_default_pricing_config_v1',
+        'admin_set_merchant_status',
+        'admin_settlement_approve_payment_request_v1',
+        'admin_settlement_approve_payout_request_v1',
+        'admin_settlement_list_accounts_v1',
+        'admin_settlement_list_entries_v1',
+        'admin_settlement_list_payment_requests_v1',
+        'admin_settlement_list_payout_requests_v1',
+        'admin_settlement_record_payout_v1',
+        'admin_settlement_record_payout_v2',
+        'admin_settlement_record_receipt_v1',
+        'admin_settlement_record_receipt_v2',
+        'admin_settlement_reject_payment_request_v1',
+        'admin_settlement_reject_payout_request_v1',
+        'admin_settlement_statement_entries_v1',
+        'admin_settlement_statement_summary_v1',
+        'admin_update_pricing_config_caps',
+        'admin_update_ride_incident',
+        'admin_upsert_service_area_geojson_v1',
+        'admin_wallet_integrity_snapshot',
+        'admin_withdraw_approve',
+        'admin_withdraw_mark_paid',
+        'admin_withdraw_reject',
+        'cancel_ride_request',
+        'check_destination_lock',
+        'create_ride_incident',
+        'driver_claim_order_delivery',
+        'driver_hotspots_v1',
+        'driver_settlement_get_my_account_v1',
+        'driver_settlement_list_entries_v1',
+        'driver_settlement_list_payment_requests_v1',
+        'driver_settlement_list_payout_requests_v1',
+        'driver_settlement_request_payment_v1',
+        'driver_settlement_request_payout_v1',
+        'driver_settlement_statement_entries_v1',
+        'driver_settlement_statement_summary_v1',
+        'family_accept_invite',
+        'family_create',
+        'family_invite_teen',
+        'family_update_policy',
+        'get_active_shift',
+        'get_applicable_pricing_rules',
+        'get_guardian_trip_info',
+        'get_live_activity_throttle_config',
+        'get_my_app_context',
+        'get_nearby_hotspots',
+        'get_today_forecast',
+        'get_user_membership',
+        'get_user_passkeys',
+        'is_admin',
+        'merchant_chat_get_or_create_thread',
+        'merchant_chat_list_messages',
+        'merchant_chat_mark_read',
+        'merchant_order_create',
+        'merchant_order_get_or_create_chat_thread',
+        'merchant_order_request_delivery',
+        'merchant_order_set_status',
+        'merchant_settlement_get_my_account_v1',
+        'merchant_settlement_list_entries_v1',
+        'merchant_settlement_list_payment_requests_v1',
+        'merchant_settlement_list_payout_requests_v1',
+        'merchant_settlement_request_payment_v1',
+        'merchant_settlement_request_payout_v1',
+        'merchant_settlement_statement_entries_v1',
+        'merchant_settlement_statement_summary_v1',
+        'nearby_available_drivers_v1',
+        'passkey_revoke',
+        'redeem_gift_code',
+        'referral_apply_code',
+        'referral_claim',
+        'referral_status',
+        'resolve_service_area',
+        'ride_chat_get_or_create_thread',
+        'search_catalog_v1',
+        'set_my_active_role',
+        'submit_ride_rating',
+        'trip_live_activity_register',
+        'trip_live_activity_revoke',
+        'user_notifications_mark_all_read',
+        'user_notifications_mark_read',
+        'wallet_cancel_withdraw',
+        'wallet_get_my_account',
+        'wallet_request_withdraw',
+-- END RPC_ALLOWLIST_AUTHENTICATED_TEST
+    $$,
+    'Authenticated role should only have execute permission on allowlisted functions'
+);
+
+SELECT * FROM finish();
+ROLLBACK;
