@@ -6,6 +6,8 @@ import { normalizeError } from '../_shared/errors.ts';
 import { z } from 'npm:zod@3.23.8';
 import { buildAgoraRtcToken, createDailyMeetingToken, createDailyRoom } from '../_shared/voiceProviders.ts';
 import { envTrim } from '../_shared/config.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
+import { handleOptions } from '../_shared/cors.ts';
 
 // Minimal schema is kept local to avoid changing global shared schemas.
 const bodySchema = z
@@ -64,8 +66,10 @@ async function startPipecatAgentSession(params: { agentName: string }) {
   };
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders() });
+Deno.serve((req) =>
+  withRequestContext('voice-call-create', req, async (_ctx) => {
+    const preflight = handleOptions(req);
+    if (preflight) return preflight;
   if (req.method !== 'POST') return errorJson('Method not allowed', 405);
 
   try {
@@ -230,4 +234,5 @@ Deno.serve(async (req) => {
     console.error('[voice-call-create] error', ne.raw ?? e);
     return errorJson(ne.message, 500, ne.code ?? 'INTERNAL', ne.hint || ne.details ? { hint: ne.hint, details: ne.details } : undefined);
   }
-});
+  }),
+);

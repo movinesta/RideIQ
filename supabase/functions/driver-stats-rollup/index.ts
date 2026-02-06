@@ -2,11 +2,13 @@ import { handleOptions } from "../_shared/cors.ts";
 import { errorJson, json } from "../_shared/json.ts";
 import { createServiceClient } from "../_shared/supabase.ts";
 import { requireCronSecret } from '../_shared/cronAuth.ts';
+import { withRequestContext } from "../_shared/requestContext.ts";
 
 type Body = { day?: string | null };
 
-Deno.serve(async (req) => {
-  const opt = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('driver-stats-rollup', req, async (_ctx) => {
+const opt = handleOptions(req);
   if (opt) return opt;
   // Cron-protected endpoint
   const cronAuth = requireCronSecret(req);
@@ -28,4 +30,5 @@ Deno.serve(async (req) => {
   if (dbErr) return errorJson(dbErr.message, 400, "DB_ERROR");
 
   return json({ ok: true });
-});
+  }),
+);

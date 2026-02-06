@@ -1,6 +1,7 @@
 import { handleOptions } from '../_shared/cors.ts';
 import { createAnonClient, requireUser } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 type Body =
   | { action: 'upload'; ext?: string; content_type?: string; set_profile?: boolean }
@@ -12,8 +13,9 @@ function sanitizeExt(ext?: string) {
   return e;
 }
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('profile-avatar-url', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   if (req.method !== 'POST') return errorJson('Method not allowed', 405);
@@ -53,4 +55,5 @@ Deno.serve(async (req) => {
   }
 
   return errorJson('Invalid payload', 400);
-});
+  }),
+);

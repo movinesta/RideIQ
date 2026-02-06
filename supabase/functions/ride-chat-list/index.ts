@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { handleOptions } from "../_shared/cors.ts";
 import { errorJson, json } from "../_shared/json.ts";
 import { createAnonClient, requireUser } from "../_shared/supabase.ts";
+import { withRequestContext } from "../_shared/requestContext.ts";
 
 type Body = {
   ride_id?: string;
@@ -9,8 +10,9 @@ type Body = {
   before?: string | null; // ISO timestamp cursor
 };
 
-serve(async (req) => {
-  const opt = handleOptions(req);
+serve((req) =>
+  withRequestContext('ride-chat-list', req, async (_ctx) => {
+const opt = handleOptions(req);
   if (opt) return opt;
 
   if (req.method !== "POST") return errorJson("Method not allowed", 405, "METHOD_NOT_ALLOWED");
@@ -53,4 +55,5 @@ serve(async (req) => {
   const nextCursor = rows && rows.length > 0 ? rows[rows.length - 1].created_at : null;
 
   return json({ ok: true, thread_id: threadId, messages, next_cursor: nextCursor });
-});
+  }),
+);

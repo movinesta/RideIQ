@@ -1,9 +1,13 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { errorJson, json } from "../_shared/json.ts";
 import { createAnonClient } from "../_shared/supabase.ts";
+import { withRequestContext } from "../_shared/requestContext.ts";
+import { handleOptions } from "../_shared/cors.ts";
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return json({ ok: true }, 204);
+serve((req) =>
+  withRequestContext('support-article-detail', req, async (_ctx) => {
+    const preflight = handleOptions(req);
+    if (preflight) return preflight;
   if (req.method !== "GET") return errorJson("Method not allowed", 405);
 
   const url = new URL(req.url);
@@ -22,4 +26,5 @@ serve(async (req) => {
   if (!data) return errorJson("Not found", 404, "NOT_FOUND");
 
   return json({ ok: true, article: data });
-});
+  }),
+);

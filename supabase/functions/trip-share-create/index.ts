@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { handleOptions, getCorsHeaders } from "../_shared/cors.ts";
 import { createAnonClient, createServiceClient, requireUser } from "../_shared/supabase.ts";
+import { withRequestContext } from "../_shared/requestContext.ts";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -26,8 +27,9 @@ function randomToken(): string {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-serve(async (req) => {
-  const opt = handleOptions(req);
+serve((req) =>
+  withRequestContext('trip-share-create', req, async (_ctx) => {
+const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405, headers: getCorsHeaders() });
@@ -80,4 +82,5 @@ serve(async (req) => {
   }
 
   return jsonResponse({ ok: true, token, expires_at: expiresAt }, 200);
-});
+  }),
+);

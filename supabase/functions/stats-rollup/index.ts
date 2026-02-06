@@ -2,6 +2,7 @@ import { handleOptions } from '../_shared/cors.ts';
 import { createServiceClient } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { requireCronSecret } from '../_shared/cronAuth.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 function isoDate(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -27,8 +28,9 @@ type Body = {
   limit?: number;
 };
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('stats-rollup', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   if (req.method !== 'POST') return errorJson('Method not allowed', 405);
@@ -67,4 +69,5 @@ Deno.serve(async (req) => {
   results.month = month.data;
 
   return json({ ok: true, ...results });
-});
+  }),
+);

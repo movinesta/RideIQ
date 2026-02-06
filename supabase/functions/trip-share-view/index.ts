@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { handleOptions, getCorsHeaders } from "../_shared/cors.ts";
 import { createServiceClient } from "../_shared/supabase.ts";
+import { withRequestContext } from "../_shared/requestContext.ts";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -20,8 +21,9 @@ async function sha256Hex(input: string): Promise<string> {
   return toHex(digest);
 }
 
-serve(async (req) => {
-  const opt = handleOptions(req);
+serve((req) =>
+  withRequestContext('trip-share-view', req, async (_ctx) => {
+const opt = handleOptions(req);
   if (opt) return opt;
 
   if (req.method !== "GET") {
@@ -164,4 +166,5 @@ serve(async (req) => {
     vehicle,
     location,
   }, 200);
-});
+  }),
+);

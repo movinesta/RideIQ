@@ -3,6 +3,7 @@ import { createAnonClient, requireUser } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
 import { logAppEvent } from '../_shared/log.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 function clampInt(v: string | null, def: number, min: number, max: number) {
   const n = Number(v ?? def);
@@ -10,8 +11,9 @@ function clampInt(v: string | null, def: number, min: number, max: number) {
   return Math.max(min, Math.min(max, Math.trunc(n)));
 }
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('support-ticket-list', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   if (req.method !== 'GET') return errorJson('Method not allowed', 405, 'METHOD_NOT_ALLOWED');
@@ -58,4 +60,5 @@ Deno.serve(async (req) => {
   });
 
   return json({ ok: true, tickets: data ?? [], next_offset: offset + (data?.length ?? 0) }, 200);
-});
+  }),
+);

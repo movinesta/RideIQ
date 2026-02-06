@@ -3,6 +3,7 @@ import { handleOptions, corsHeaders } from "../_shared/cors.ts";
 import { errorJson, json } from "../_shared/json.ts";
 import { createServiceClient } from "../_shared/supabase.ts";
 import { requireWebhookSecret } from "../_shared/webhookAuth.ts";
+import { withRequestContext } from "../_shared/requestContext.ts";
 
 /**
  * interest-seed
@@ -81,8 +82,9 @@ function compactTitle(kind: string): string {
   return "خصومات";
 }
 
-serve(async (req) => {
-  const opt = handleOptions(req);
+serve((req) =>
+  withRequestContext('interest-seed', req, async (_ctx) => {
+const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") return errorJson("Method not allowed", 405);
 
@@ -274,4 +276,5 @@ serve(async (req) => {
   }
 
   return json({ ok: true, seeded: top.length, notification_id: notificationId }, 200, corsHeaders);
-});
+  }),
+);

@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { errorJson, json } from "../_shared/json.ts";
 import { requireUser, createAnonClient } from "../_shared/supabase.ts";
+import { withRequestContext } from "../_shared/requestContext.ts";
+import { handleOptions } from "../_shared/cors.ts";
 
 type Payload = {
   token: string;
@@ -9,8 +11,10 @@ type Payload = {
   app_version?: string | null;
 };
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return json({ ok: true }, 204);
+serve((req) =>
+  withRequestContext('device-token-upsert', req, async (_ctx) => {
+    const preflight = handleOptions(req);
+    if (preflight) return preflight;
   if (req.method !== "POST") return errorJson("Method not allowed", 405);
 
   const { user, error } = await requireUser(req);
@@ -45,4 +49,5 @@ serve(async (req) => {
   if (dbErr) return errorJson(dbErr.message, 400, "DB_ERROR");
 
   return json({ ok: true, device_token: data });
-});
+  }),
+);

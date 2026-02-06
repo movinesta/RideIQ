@@ -3,13 +3,15 @@ import { createServiceClient, requireUser } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
 import { logAppEvent } from '../_shared/log.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 type DriverAcceptBody = {
   request_id?: string;
 };
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('driver-accept', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   if (req.method !== 'POST') {
@@ -75,4 +77,5 @@ Deno.serve(async (req) => {
   });
 
   return json({ ride: row, rate_limit: { remaining: rl.remaining, reset_at: rl.resetAt } });
-});
+  }),
+);

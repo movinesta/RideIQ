@@ -2,13 +2,15 @@ import { handleOptions } from '../_shared/cors.ts';
 import { createAnonClient, requireUser } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 type Body = {
   code?: string;
 };
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('referral-apply', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   if (req.method !== 'POST') return errorJson('Method not allowed', 405);
@@ -36,4 +38,5 @@ Deno.serve(async (req) => {
   if (error) return errorJson(error.message, 400, 'REFERRAL_ERROR');
 
   return json({ ok: true, result: data, rate_limit: { remaining: rl.remaining, reset_at: rl.resetAt } });
-});
+  }),
+);

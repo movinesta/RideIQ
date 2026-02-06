@@ -2,9 +2,11 @@ import { handleOptions } from '../_shared/cors.ts';
 import { requireUserStrict as requireUser } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { getEnabledProviders, getPaymentsPublicConfig } from '../_shared/paymentsConfig.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('payments-config', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   try {
@@ -31,4 +33,5 @@ Deno.serve(async (req) => {
     const msg = e instanceof Error ? e.message : String(e);
     return errorJson(msg, 500, 'INTERNAL');
   }
-});
+  }),
+);

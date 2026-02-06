@@ -2,6 +2,7 @@ import { handleOptions } from '../_shared/cors.ts';
 import { createServiceClient, requireUser } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 function randomCode(len = 8) {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -12,8 +13,9 @@ function randomCode(len = 8) {
   return out;
 }
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('referral-code', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   const ip = getClientIp(req);
@@ -73,4 +75,5 @@ Deno.serve(async (req) => {
   } catch (e) {
     return errorJson('server_error', 500, { message: String(e) }, headers);
   }
-});
+  }),
+);

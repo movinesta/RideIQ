@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { handleOptions } from "../_shared/cors.ts";
 import { errorJson, json } from "../_shared/json.ts";
 import { createAnonClient, createServiceClient, requireUser } from "../_shared/supabase.ts";
+import { withRequestContext } from "../_shared/requestContext.ts";
 
 type Body = {
   action?: "upload" | "download";
@@ -16,8 +17,9 @@ function safeExt(name: string) {
   return m ? m[1] : "bin";
 }
 
-serve(async (req) => {
-  const opt = handleOptions(req);
+serve((req) =>
+  withRequestContext('ride-chat-media-url', req, async (_ctx) => {
+const opt = handleOptions(req);
   if (opt) return opt;
 
   if (req.method !== "POST") return errorJson("Method not allowed", 405, "METHOD_NOT_ALLOWED");
@@ -80,4 +82,5 @@ serve(async (req) => {
   if (sErr) return errorJson(sErr.message, 400, "STORAGE_ERROR");
 
   return json({ ok: true, bucket: "chat-media", object_key: objectKey, signed_url: data?.signedUrl, expires_in: expiresIn });
-});
+  }),
+);

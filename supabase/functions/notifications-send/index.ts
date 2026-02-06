@@ -1,6 +1,7 @@
 import { handleOptions } from '../_shared/cors.ts';
 import { createAnonClient, createServiceClient, requireUser } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 type Body = {
   user_ids?: string[];
@@ -10,8 +11,9 @@ type Body = {
   data?: Record<string, unknown> | null;
 };
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('notifications-send', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   try {
@@ -53,4 +55,5 @@ Deno.serve(async (req) => {
   } catch (e) {
     return errorJson('server_error', 500, { message: String(e) });
   }
-});
+  }),
+);

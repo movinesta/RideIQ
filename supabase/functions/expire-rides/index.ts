@@ -3,6 +3,7 @@ import { createServiceClient } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { logAppEvent } from '../_shared/log.ts';
 import { requireCronSecret } from '../_shared/cronAuth.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 
 // System actor used for automatic state transitions.
@@ -18,8 +19,9 @@ function parseBool(v: string | null) {
   return s === '1' || s === 'true' || s === 'yes' || s === 'y' || s === 'on';
 }
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('expire-rides', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   if (req.method !== 'POST') {
@@ -200,4 +202,5 @@ Deno.serve(async (req) => {
     await logAppEvent({ event_type: 'expire_rides_error', actor_type: 'system', payload: { message: msg } });
     return errorJson(msg, 500, 'INTERNAL');
   }
-});
+  }),
+);

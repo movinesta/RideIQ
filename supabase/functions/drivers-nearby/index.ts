@@ -12,6 +12,7 @@
 import { handleOptions } from "../_shared/cors.ts";
 import { errorJson, json } from "../_shared/json.ts";
 import { createServiceClient, requireUser } from "../_shared/supabase.ts";
+import { withRequestContext } from "../_shared/requestContext.ts";
 
 type NearbyDriversBody = {
   request_id?: string;
@@ -58,8 +59,9 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
   return R * c;
 }
 
-Deno.serve(async (req) => {
-  const opt = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('drivers-nearby', req, async (_ctx) => {
+const opt = handleOptions(req);
   if (opt) return opt;
 
   if (req.method !== "POST") {
@@ -278,4 +280,5 @@ Deno.serve(async (req) => {
   if (debug) resp["debug"] = debug_rows;
 
   return json(resp);
-});
+  }),
+);

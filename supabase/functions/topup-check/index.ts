@@ -5,6 +5,7 @@ import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared
 import { getZaincashV2Config, zaincashV2Inquiry } from '../_shared/zaincashV2.ts';
 import { findProvider, getPaymentsPublicConfig } from '../_shared/paymentsConfig.ts';
 import { QICARD_DEFAULT_STATUS_PATH } from '../_shared/constants.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 
 function isUuid(v: string) {
@@ -145,8 +146,9 @@ async function checkAsiaPayFromEvents(service: any, intentId: string) {
   return { ok: true, statusRaw: 'pending', payload: null, providerTxId: null };
 }
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('topup-check', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   try {
@@ -331,4 +333,5 @@ const kind = provider.kind;
     const msg = e instanceof Error ? e.message : String(e);
     return errorJson(msg, 500, 'INTERNAL');
   }
-});
+  }),
+);

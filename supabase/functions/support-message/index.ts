@@ -3,6 +3,7 @@ import { createAnonClient, requireUser } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
 import { logAppEvent } from '../_shared/log.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 type CreateTicket = {
   action: 'create_ticket';
@@ -25,8 +26,9 @@ function retryAfterSeconds(resetAtIso: string) {
   return Math.max(1, Math.ceil(ms / 1000));
 }
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('support-message', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   if (req.method !== 'POST') return errorJson('Method not allowed', 405, 'METHOD_NOT_ALLOWED');
@@ -115,4 +117,5 @@ Deno.serve(async (req) => {
   });
 
   return json({ ok: true }, 200);
-});
+  }),
+);

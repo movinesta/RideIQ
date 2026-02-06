@@ -2,6 +2,7 @@ import { handleOptions } from '../_shared/cors.ts';
 import { createAnonClient, createServiceClient, requireUser } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { logAppEvent } from '../_shared/log.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 type AttachDocument = {
   action: 'attach_document';
@@ -46,8 +47,9 @@ function randomId() {
   return crypto.randomUUID();
 }
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('kyc-doc-url', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   if (req.method !== 'POST') return errorJson('Method not allowed', 405, 'METHOD_NOT_ALLOWED');
@@ -197,4 +199,5 @@ Deno.serve(async (req) => {
   }
 
   return errorJson('Unknown action', 400, 'UNKNOWN_ACTION');
-});
+  }),
+);

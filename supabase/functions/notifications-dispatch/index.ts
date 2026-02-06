@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { errorJson, json } from "../_shared/json.ts";
 import { createServiceClient } from "../_shared/supabase.ts";
 import { requireWebhookSecret } from "../_shared/webhookAuth.ts";
+import { withRequestContext } from "../_shared/requestContext.ts";
+import { handleOptions } from "../_shared/cors.ts";
 
 /**
  * Outbox dispatcher (event-driven)
@@ -34,8 +36,10 @@ async function postJson(url: string, payload: unknown, token?: string) {
 
 type Body = { limit?: number };
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return json({ ok: true }, 204);
+serve((req) =>
+  withRequestContext('notifications-dispatch', req, async (_ctx) => {
+    const preflight = handleOptions(req);
+    if (preflight) return preflight;
   if (req.method !== "POST") return errorJson("Method not allowed", 405);
 
   const auth = requireWebhookSecret(req, "DISPATCH_WEBHOOK_SECRET", "x-webhook-secret");
@@ -102,4 +106,5 @@ serve(async (req) => {
   }
 
   return json({ ok: true, claimed: items.length, sent, failed, lock_id: lockId });
-});
+  }),
+);

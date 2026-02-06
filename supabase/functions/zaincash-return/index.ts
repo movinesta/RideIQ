@@ -3,6 +3,7 @@ import { createServiceClient } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { verifyJwtHS256 } from '../_shared/crypto.ts';
 import { getZaincashV2Config, zaincashV2Inquiry } from '../_shared/zaincashV2.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 const APP_BASE_URL = (Deno.env.get('APP_BASE_URL') ?? '').replace(/\/$/, '').replace(/\/wallet$/, '');
 
@@ -80,8 +81,9 @@ function extractRedirectToken(url: URL): string {
 }
 
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('zaincash-return', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   try {
@@ -232,4 +234,5 @@ Deno.serve(async (req) => {
     const msg = e instanceof Error ? e.message : String(e);
     return errorJson(msg, 500, 'INTERNAL');
   }
-});
+  }),
+);

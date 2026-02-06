@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createUserClient, requireUser } from "../_shared/supabase.ts";
+import { withRequestContext } from "../_shared/requestContext.ts";
+import { handleOptions } from "../_shared/cors.ts";
 
 function corsHeaders(origin: string | null) {
   return {
@@ -10,9 +12,12 @@ function corsHeaders(origin: string | null) {
   };
 }
 
-serve(async (req) => {
-  const origin = req.headers.get("origin");
-  if (req.method === "OPTIONS") return new Response("", { status: 204, headers: corsHeaders(origin) });
+serve((req) =>
+  withRequestContext('kyc-submit', req, async (_ctx) => {
+    const preflight = handleOptions(req);
+    if (preflight) return preflight;
+
+const origin = req.headers.get("origin");
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: corsHeaders(origin) });
 
   const anon = createUserClient(req);
@@ -90,4 +95,5 @@ serve(async (req) => {
   }
 
   return new Response(JSON.stringify({ ok: true, submission_id: submissionId }), { status: 200, headers: { ...corsHeaders(origin), "content-type": "application/json" } });
-});
+  }),
+);

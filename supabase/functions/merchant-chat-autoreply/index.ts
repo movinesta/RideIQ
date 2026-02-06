@@ -6,6 +6,7 @@ import { createServiceClient } from "../_shared/supabase.ts";
 import { requireWebhookSecret } from "../_shared/webhookAuth.ts";
 import { AI_ASSISTANT_PROFILE_ID, ensureAiAssistantProfile } from "../_shared/assistant.ts";
 import {
+import { withRequestContext } from "../_shared/requestContext.ts";
   callOpenRouterResponses,
   extractFunctionCalls,
   extractOutputText,
@@ -669,8 +670,9 @@ async function runAgentForMerchantChat(
   return "ما كدرت اوصل لجواب دقيق. ممكن توضح سؤالك اكثر؟";
 }
 
-serve(async (req) => {
-  const opt = handleOptions(req);
+serve((req) =>
+  withRequestContext('merchant-chat-autoreply', req, async (_ctx) => {
+const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") return errorJson("Method not allowed", 405);
 
@@ -807,4 +809,5 @@ serve(async (req) => {
     await svc.from("merchant_chat_ai_receipts").delete().eq("message_id", msg.id);
     return errorJson(String((e as any)?.message ?? e), 500, "INTERNAL");
   }
-});
+  }),
+);

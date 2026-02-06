@@ -1,14 +1,18 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { errorJson, json } from "../_shared/json.ts";
 import { requireUser, createServiceClient, createAnonClient } from "../_shared/supabase.ts";
+import { withRequestContext } from "../_shared/requestContext.ts";
+import { handleOptions } from "../_shared/cors.ts";
 
 type Payload = {
   ticket_id: string;
   message: string;
 };
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return json({ ok: true }, 204);
+serve((req) =>
+  withRequestContext('support-ticket-reply', req, async (_ctx) => {
+    const preflight = handleOptions(req);
+    if (preflight) return preflight;
   if (req.method !== "POST") return errorJson("Method not allowed", 405);
 
   const { user, error } = await requireUser(req);
@@ -35,4 +39,5 @@ serve(async (req) => {
   if (mErr) return errorJson(mErr.message, 400, "DB_ERROR");
 
   return json({ ok: true });
-});
+  }),
+);

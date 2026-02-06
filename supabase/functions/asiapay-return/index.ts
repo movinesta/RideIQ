@@ -3,6 +3,7 @@ import { createServiceClient } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { shaHex, timingSafeEqual } from '../_shared/crypto.ts';
 import { findProvider, getPaymentsPublicConfig } from '../_shared/paymentsConfig.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 const APP_BASE_URL = (Deno.env.get('APP_BASE_URL') ?? '').replace(/\/$/, '').replace(/\/wallet$/, '');
 
@@ -22,8 +23,9 @@ function redirectToWallet(intentId: string | null, status: string | null, verifi
   return Response.redirect(url.toString(), 302);
 }
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('asiapay-return', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   try {
@@ -134,4 +136,5 @@ const secret = String(Deno.env.get('ASIAPAY_SECURE_HASH_SECRET') ?? '');
     const msg = e instanceof Error ? e.message : String(e);
     return errorJson(msg, 500, 'INTERNAL');
   }
-});
+  }),
+);

@@ -1,4 +1,5 @@
 import { handleOptions } from '../_shared/cors.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
 /**
  * QiCard hosted payment page return handler.
@@ -76,8 +77,9 @@ async function readParams(req: Request): Promise<URLSearchParams> {
   return merged;
 }
 
-Deno.serve(async (req) => {
-  const cors = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('qicard-return', req, async (_ctx) => {
+const cors = handleOptions(req);
   if (cors) return cors;
 
   if (!APP_BASE_URL) {
@@ -88,4 +90,5 @@ Deno.serve(async (req) => {
 
   // Always redirect back to the app (the app will show "processing" and rely on webhook/polling).
   return redirect(buildRedirectUrl(params));
-});
+  }),
+);

@@ -3,6 +3,7 @@ import { handleOptions, corsHeaders } from "../_shared/cors.ts";
 import { errorJson, json } from "../_shared/json.ts";
 import { createServiceClient } from "../_shared/supabase.ts";
 import { requireWebhookSecret } from "../_shared/webhookAuth.ts";
+import { withRequestContext } from "../_shared/requestContext.ts";
 
 /**
  * promotion-notify
@@ -58,8 +59,9 @@ function fmtDiscount(p: Promotion): string {
   return String(p.value);
 }
 
-serve(async (req) => {
-  const opt = handleOptions(req);
+serve((req) =>
+  withRequestContext('promotion-notify', req, async (_ctx) => {
+const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") return errorJson("Method not allowed", 405);
 
@@ -258,4 +260,5 @@ serve(async (req) => {
   }
 
   return json({ ok: true, promotion_id: promo.id, candidates: userIds.length, created, skipped }, 200, corsHeaders);
-});
+  }),
+);

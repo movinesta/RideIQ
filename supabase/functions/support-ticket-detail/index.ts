@@ -3,9 +3,11 @@ import { createAnonClient, requireUser } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
 import { logAppEvent } from '../_shared/log.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('support-ticket-detail', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   if (req.method !== 'GET') return errorJson('Method not allowed', 405, 'METHOD_NOT_ALLOWED');
@@ -52,4 +54,5 @@ Deno.serve(async (req) => {
   });
 
   return json({ ok: true, ticket, messages: messages ?? [] }, 200);
-});
+  }),
+);

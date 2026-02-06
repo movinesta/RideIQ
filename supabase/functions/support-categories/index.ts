@@ -2,9 +2,11 @@ import { handleOptions } from '../_shared/cors.ts';
 import { createAnonClient, requireUser } from '../_shared/supabase.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
+import { withRequestContext } from '../_shared/requestContext.ts';
 
-Deno.serve(async (req) => {
-  const preflight = handleOptions(req);
+Deno.serve((req) =>
+  withRequestContext('support-categories', req, async (_ctx) => {
+const preflight = handleOptions(req);
   if (preflight) return preflight;
 
   if (req.method !== 'GET') return errorJson('Method not allowed', 405, 'METHOD_NOT_ALLOWED');
@@ -30,4 +32,5 @@ Deno.serve(async (req) => {
   if (qErr) return errorJson(qErr.message, 400, 'QUERY_FAILED');
 
   return json({ ok: true, categories: data ?? [] }, 200);
-});
+  }),
+);

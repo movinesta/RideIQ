@@ -4,14 +4,18 @@ import { createServiceClient, requireUser } from '../_shared/supabase.ts';
 import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
 import { normalizeError } from '../_shared/errors.ts';
 import { z } from 'npm:zod@3.23.8';
+import { withRequestContext } from '../_shared/requestContext.ts';
+import { handleOptions } from '../_shared/cors.ts';
 
 const bodySchema = z.object({
   call_id: z.string().uuid(),
   reason: z.string().max(200).optional(),
 });
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: getCorsHeaders() });
+Deno.serve((req) =>
+  withRequestContext('voice-call-end', req, async (_ctx) => {
+    const preflight = handleOptions(req);
+    if (preflight) return preflight;
   if (req.method !== 'POST') return errorJson('Method not allowed', 405);
 
   try {
@@ -86,4 +90,5 @@ Deno.serve(async (req) => {
       ne.hint || ne.details ? { hint: ne.hint, details: ne.details } : undefined,
     );
   }
-});
+  }),
+);

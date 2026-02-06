@@ -14,6 +14,7 @@ import {
 } from "../_shared/openrouter.ts";
 
 import {
+import { withRequestContext } from "../_shared/requestContext.ts";
   AssistantEnvelope,
   envelopeJsonSchema,
   heuristicKindFromMessage,
@@ -1874,8 +1875,9 @@ async function runAgentStream(
 }
 
 
-serve(async (req) => {
-  const opt = handleOptions(req);
+serve((req) =>
+  withRequestContext('ai-gateway', req, async (_ctx) => {
+const opt = handleOptions(req);
   if (opt) return opt;
   if (req.method !== "POST") return errorJson("Method not allowed", 405);
 
@@ -2109,4 +2111,5 @@ ${transcriptSafe}
     );
   }
 
-});
+  }),
+);
