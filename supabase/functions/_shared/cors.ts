@@ -3,10 +3,14 @@ import { envTrim } from './config.ts';
 /**
  * CORS helper for Edge Functions.
  *
- * Strategy:
- * - Prefer explicit APP_ORIGIN / APP_BASE_URL (stable production config).
- * - If not set, allow GitHub Pages origin by default, and also allow localhost.
- * - When request has Origin header and it's allowlisted, echo it back (required for credentials mode).
+ * Best-practice behavior for browser calls:
+ * - If the request includes an Origin header and it is allowlisted (CORS_ALLOW_ORIGINS + defaults),
+ *   echo it back (needed for credentialed requests).
+ * - If Origin is present but not allowlisted, fall back to '*' (works for non-credentialed requests)
+ *   so callers get a real HTTP status/body instead of a hard CORS failure.
+ * - If Origin is absent (server-to-server), use APP_ORIGIN / APP_BASE_URL if configured, else '*'.
+ *
+ * Note: CORS is not an authentication mechanism. If you need to restrict access, enforce it in code.
  */
 const DEFAULT_ALLOWLIST = new Set<string>([
   'https://movinesta.github.io',
@@ -61,12 +65,26 @@ export function getCorsHeadersForRequest(req: Request): Record<string, string> {
   const configured = deriveConfiguredOrigin();
   const origin = req.headers.get('origin') ?? '';
 
-  // 1) If configured origin exists, always use it (stable).
-  // 2) Else if request origin is allowlisted, echo it back.
-  // 3) Else fall back to '*' (works for non-credentialed requests).
-  const allowOrigin =
-    configured ??
-    (origin && allowlist.has(origin) ? origin : '*');
+  // Prefer echoing the browser Origin when it is allowlisted.
+  // This avoids accidental CORS breakage when APP_ORIGIN is set for production
+  // but developers/test environments call from localhost or another allowed origin.
+  let allowOrigin = '*';
+
+  if (origin) {
+    if (allowlist.has(origin)) {
+      allowOrigin = origin;
+    } else if (configured && origin === configured) {
+      // If the request origin matches configured origin, allow it.
+      allowOrigin = origin;
+    } else {
+      // Unknown origin: non-credentialed requests can still proceed.
+      // Credentialed requests must explicitly allowlist their origin.
+      allowOrigin = '*';
+    }
+  } else {
+    // Server-to-server (no Origin): use configured origin if present.
+    allowOrigin = configured ?? '*';
+  }
 
   const headers: Record<string, string> = {
     'Access-Control-Allow-Origin': allowOrigin,

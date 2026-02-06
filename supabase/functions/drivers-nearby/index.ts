@@ -9,7 +9,7 @@
 // (drivers(...), driver_vehicles(...)) because schema-cache/relationship issues
 // can silently yield empty embeds and falsely produce "0 drivers".
 
-import { handleOptions } from "../_shared/cors.ts";
+import { getCorsHeadersForRequest, handleOptions } from "../_shared/cors.ts";
 import { errorJson, json } from "../_shared/json.ts";
 import { createServiceClient, requireUser } from "../_shared/supabase.ts";
 import { withRequestContext } from "../_shared/requestContext.ts";
@@ -60,27 +60,32 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
 }
 
 Deno.serve((req) =>
-  withRequestContext('drivers-nearby', req, async (_ctx) => {
-const opt = handleOptions(req);
-  if (opt) return opt;
+  withRequestContext("drivers-nearby", req, async (ctx) => {
+    const opt = handleOptions(req);
+    if (opt) return opt;
 
-  if (req.method !== "POST") {
-    return errorJson("Method not allowed", 405, "METHOD_NOT_ALLOWED");
-  }
+    const cors = getCorsHeadersForRequest(req);
 
-  const { user, error: authError } = await requireUser(req);
-  if (!user) {
-    return errorJson(authError ?? "Unauthorized", 401, "UNAUTHORIZED");
-  }
+    if (req.method !== "POST") {
+      return errorJson("Method not allowed", 405, "METHOD_NOT_ALLOWED", undefined, { ...ctx.headers, ...cors });
+    }
 
-  let body: NearbyDriversBody;
-  try {
-    body = await req.json();
-  } catch {
-    return errorJson("Invalid JSON body", 400, "BAD_REQUEST");
-  }
+    // Auth is enforced inside the function (verify_jwt should be disabled for this function
+    // so OPTIONS preflights are not blocked by the gateway).
+    const { user, error: authError } = await requireUser(req);
+    if (!user) {
+      return errorJson(authError ?? "Unauthorized", 401, "UNAUTHORIZED", undefined, { ...ctx.headers, ...cors });
+    }
+    ctx.setUserId(user.id);
 
-  const service = createServiceClient();
+    let body: NearbyDriversBody;
+    try {
+      body = await req.json();
+    } catch {
+      return errorJson("Invalid JSON body", 400, "BAD_REQUEST", undefined, { ...ctx.headers, ...cors });
+    }
+
+    const service = createServiceClient();
 
   // Mode selection: request_id preferred if provided
   const request_id = typeof body?.request_id === "string" ? body.request_id.trim() : "";
@@ -91,7 +96,7 @@ const opt = handleOptions(req);
 
   if (request_id) {
     if (!isUuid(request_id)) {
-      return errorJson("Invalid request_id", 400, "BAD_REQUEST");
+      return errorJson("Invalid request_id", 400, "BAD_REQUEST", undefined, { ...ctx.headers, ...cors });
     }
 
     const { data: rr, error: rrErr } = await service
@@ -100,9 +105,9 @@ const opt = handleOptions(req);
       .eq("id", request_id)
       .maybeSingle();
 
-    if (rrErr) return errorJson(`Failed to load ride request: ${rrErr.message}`, 500, "DB_ERROR");
-    if (!rr) return errorJson("Ride request not found", 404, "NOT_FOUND");
-    if (String(rr.rider_id ?? "") !== String(user.id)) return errorJson("Forbidden", 403, "FORBIDDEN");
+    if (rrErr) return errorJson(`Failed to load ride request: ${rrErr.message}`, 500, "DB_ERROR", undefined, { ...ctx.headers, ...cors });
+    if (!rr) return errorJson("Ride request not found", 404, "NOT_FOUND", undefined, { ...ctx.headers, ...cors });
+    if (String(rr.rider_id ?? "") !== String(user.id)) return errorJson("Forbidden", 403, "FORBIDDEN", undefined, { ...ctx.headers, ...cors });
 
     pickup_lat = typeof rr.pickup_lat === "number" ? rr.pickup_lat : null;
     pickup_lng = typeof rr.pickup_lng === "number" ? rr.pickup_lng : null;
@@ -110,7 +115,7 @@ const opt = handleOptions(req);
   }
 
   if (pickup_lat === null || pickup_lng === null) {
-    return errorJson("pickup_lat/pickup_lng are required", 400, "BAD_REQUEST");
+    return errorJson("pickup_lat/pickup_lng are required", 400, "BAD_REQUEST", undefined, { ...ctx.headers, ...cors });
   }
 
   const radius_m = clamp(toNumber(body?.radius_m) ?? 5000, 100, 50000);
@@ -130,7 +135,7 @@ const opt = handleOptions(req);
       .from("rides")
       .select("driver_id")
       .in("status", ["assigned", "arrived", "in_progress"]);
-    if (error) return errorJson(`Failed to load rides: ${error.message}`, 500, "DB_ERROR");
+    if (error) return errorJson(`Failed to load rides: ${error.message}`, 500, "DB_ERROR", undefined, { ...ctx.headers, ...cors });
     for (const r of data ?? []) {
       if (r?.driver_id) busy.add(String(r.driver_id));
     }
@@ -144,7 +149,7 @@ const opt = handleOptions(req);
     .gte("updated_at", since)
     .limit(2000);
 
-  if (locErr) return errorJson(`Failed to load driver locations: ${locErr.message}`, 500, "DB_ERROR");
+  if (locErr) return errorJson(`Failed to load driver locations: ${locErr.message}`, 500, "DB_ERROR", undefined, { ...ctx.headers, ...cors });
 
   const driverIds = Array.from(
     new Set((locRows ?? []).map((r: any) => String(r?.driver_id ?? "")).filter(Boolean)),
@@ -168,7 +173,7 @@ const opt = handleOptions(req);
       stats: { scanned_locations: 0, busy_drivers: busy.size, matched: 0 },
       drivers: [],
       ...(debug ? { debug: [] } : {}),
-    });
+    }, 200, { ...ctx.headers, ...cors });
   }
 
   // 3) Driver statuses (avoid embeds)
@@ -178,7 +183,7 @@ const opt = handleOptions(req);
       .from("drivers")
       .select("id, status")
       .in("id", driverIds);
-    if (error) return errorJson(`Failed to load drivers: ${error.message}`, 500, "DB_ERROR");
+    if (error) return errorJson(`Failed to load drivers: ${error.message}`, 500, "DB_ERROR", undefined, { ...ctx.headers, ...cors });
     for (const d of data ?? []) {
       if (d?.id) statusById.set(String(d.id), String(d.status ?? ""));
     }
@@ -191,7 +196,7 @@ const opt = handleOptions(req);
       .from("driver_vehicles")
       .select("driver_id, capacity, is_active")
       .in("driver_id", driverIds);
-    if (error) return errorJson(`Failed to load driver vehicles: ${error.message}`, 500, "DB_ERROR");
+    if (error) return errorJson(`Failed to load driver vehicles: ${error.message}`, 500, "DB_ERROR", undefined, { ...ctx.headers, ...cors });
 
     for (const v of data ?? []) {
       const driver_id = String(v?.driver_id ?? "");
@@ -279,6 +284,6 @@ const opt = handleOptions(req);
   };
   if (debug) resp["debug"] = debug_rows;
 
-  return json(resp);
+  return json(resp, 200, { ...ctx.headers, ...cors });
   }),
 );

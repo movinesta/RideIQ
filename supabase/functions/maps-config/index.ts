@@ -18,14 +18,13 @@ Deno.serve((req) =>
     const preflight = handleOptions(req);
     if (preflight) return preflight;
 
-    // Tighten CORS for public config endpoints.
-    // - In production, if an Origin header is present but not allowlisted, reject.
-    // - If Origin is absent (server-to-server), allow.
+    // This endpoint returns a browser key, which is effectively public.
+    // Restrict access using Google Cloud key restrictions (HTTP referrers + API restrictions),
+    // not CORS. We still emit metrics when the origin is not allowlisted.
     const origin = req.headers.get('origin') ?? '';
     const cors = getCorsHeadersForRequest(req);
     if (isProduction() && origin && cors['Access-Control-Allow-Origin'] === '*') {
-      emitMetricBestEffort(ctx, { event_type: 'metric.maps.origin_denied', level: 'warn', payload: { origin } });
-      return errorJson('Origin not allowed', 403, 'ORIGIN_NOT_ALLOWED', undefined, { ...ctx.headers, ...cors });
+      emitMetricBestEffort(ctx, { event_type: 'metric.maps.origin_unlisted', level: 'warn', payload: { origin } });
     }
 
     // Basic abuse control (this key is "public" by design, but we still reduce scraping).
