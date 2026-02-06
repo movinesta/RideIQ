@@ -1,12 +1,12 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { handleOptions, corsHeaders } from "../_shared/cors.ts";
+import { handleOptions } from "../_shared/cors.ts";
 import { errorJson, json } from "../_shared/json.ts";
+import { withRequestContext } from "../_shared/requestContext.ts";
 import { consumeRateLimit } from "../_shared/rateLimit.ts";
 import { createServiceClient } from "../_shared/supabase.ts";
 import { requireWebhookSecret } from "../_shared/webhookAuth.ts";
 import { AI_ASSISTANT_PROFILE_ID, ensureAiAssistantProfile } from "../_shared/assistant.ts";
 import {
-import { withRequestContext } from "../_shared/requestContext.ts";
   callOpenRouterResponses,
   extractFunctionCalls,
   extractOutputText,
@@ -670,11 +670,15 @@ async function runAgentForMerchantChat(
   return "ما كدرت اوصل لجواب دقيق. ممكن توضح سؤالك اكثر؟";
 }
 
-serve((req) =>
-  withRequestContext('merchant-chat-autoreply', req, async (_ctx) => {
-const opt = handleOptions(req);
+serve((req) => withRequestContext("merchant-chat-autoreply", req, async (ctx) => {
+  const opt = handleOptions(req);
   if (opt) return opt;
-  if (req.method !== "POST") return errorJson("Method not allowed", 405);
+  const H = ctx.headers;
+  const ok = (data: unknown, status = 200) => json(data, status, H);
+  const fail = (message: string, status = 400, code?: string, extra?: Record<string, unknown>) =>
+    errorJson(message, status, code, extra, H);
+
+  if (req.method !== "POST") return fail("Method not allowed", 405);
 
   // Shared-secret auth (verify_jwt=false)
   const auth = requireWebhookSecret(req, "MERCHANT_CHAT_WEBHOOK_SECRET", "x-webhook-secret");
@@ -687,18 +691,18 @@ const opt = handleOptions(req);
   const record = (payload as any)?.record;
 
   if (type !== "INSERT" || table !== "merchant_chat_messages" || !record) {
-    return json({ ok: true, ignored: true, reason: "not_target_event" }, 200, corsHeaders);
+    return ok({ ok: true, ignored: true, reason: "not_target_event" }, 200);
   }
 
   const msg = record as ChatMsg;
-  if (!msg.id || !msg.thread_id) return errorJson("Invalid payload", 400, "BAD_REQUEST");
+  if (!msg.id || !msg.thread_id) return fail("Invalid payload", 400, "BAD_REQUEST");
 
   // Skip AI/self/system messages
-  if (String(msg.message_type ?? "") === "ai") return json({ ok: true, ignored: true, reason: "already_ai" }, 200, corsHeaders);
-  if (String(msg.sender_id ?? "") === AI_ASSISTANT_PROFILE_ID) return json({ ok: true, ignored: true, reason: "ai_sender" }, 200, corsHeaders);
+  if (String(msg.message_type ?? "") === "ai") return ok({ ok: true, ignored: true, reason: "already_ai" }, 200);
+  if (String(msg.sender_id ?? "") === AI_ASSISTANT_PROFILE_ID) return ok({ ok: true, ignored: true, reason: "ai_sender" }, 200);
 
   const body = String(msg.body ?? "").trim();
-  if (!body) return json({ ok: true, ignored: true, reason: "empty" }, 200, corsHeaders);
+  if (!body) return ok({ ok: true, ignored: true, reason: "empty" }, 200);
 
   const svc = createServiceClient();
 
@@ -707,14 +711,14 @@ const opt = handleOptions(req);
   if (insReceiptErr) {
     const m = String(insReceiptErr.message ?? "");
     if (m.includes("23505") || m.toLowerCase().includes("duplicate")) {
-      return json({ ok: true, ignored: true, reason: "duplicate_receipt" }, 200, corsHeaders);
+      return ok({ ok: true, ignored: true, reason: "duplicate_receipt" }, 200);
     }
-    return errorJson(insReceiptErr.message, 400, "DB_ERROR");
+    return fail(insReceiptErr.message, 400, "DB_ERROR");
   }
 
   // Manual triggers are handled by the UI (ai-gateway) to avoid double replies.
   if (isManualAiTrigger(body)) {
-    return json({ ok: true, ignored: true, reason: "manual_trigger" }, 200, corsHeaders);
+    return ok({ ok: true, ignored: true, reason: "manual_trigger" }, 200);
   }
 
   // Load thread + settings
@@ -723,11 +727,11 @@ const opt = handleOptions(req);
     .select("id,merchant_id,customer_id")
     .eq("id", msg.thread_id)
     .maybeSingle();
-  if (tErr || !thread) return errorJson(tErr?.message ?? "Thread not found", 400, "DB_ERROR");
+  if (tErr || !thread) return fail(tErr?.message ?? "Thread not found", 400, "DB_ERROR");
 
   // Only auto-reply on customer messages.
   if (String((thread as any).customer_id) !== String(msg.sender_id)) {
-    return json({ ok: true, ignored: true, reason: "not_customer_message" }, 200, corsHeaders);
+    return ok({ ok: true, ignored: true, reason: "not_customer_message" }, 200);
   }
 
   const merchantId = String((thread as any).merchant_id);
@@ -743,25 +747,25 @@ const opt = handleOptions(req);
 
   const s = settings as any;
   if (!s?.auto_enabled) {
-    return json({ ok: true, ignored: true, reason: "auto_disabled" }, 200, corsHeaders);
+    return ok({ ok: true, ignored: true, reason: "auto_disabled" }, 200);
   }
 
   const mode = String(s.auto_reply_mode ?? "smart");
   if (mode === "smart" && !shouldAutoReplySmart(body)) {
-    return json({ ok: true, ignored: true, reason: "smart_filter_no_match" }, 200, corsHeaders);
+    return ok({ ok: true, ignored: true, reason: "smart_filter_no_match" }, 200);
   }
   // Rate limiting (atomic, concurrency-safe). AI calls are costly => fail-closed if the RPC isn't available.
   const minGap = Math.max(0, Math.min(300, Number(s.min_gap_seconds ?? 15)));
   if (minGap > 0) {
     const rl = await consumeRateLimit({ key: `merchant_chat_autoreply:thread:${msg.thread_id}`, windowSeconds: minGap, limit: 1, failOpen: false });
     if (!rl.allowed) {
-      return json({ ok: true, ignored: true, reason: "rate_limited" }, 200, corsHeaders);
+      return ok({ ok: true, ignored: true, reason: "rate_limited" }, 200);
     }
   }
 
   const rlSender = await consumeRateLimit({ key: `merchant_chat_autoreply:sender:${msg.sender_id}`, windowSeconds: 60, limit: 6, failOpen: false });
   if (!rlSender.allowed) {
-    return json({ ok: true, ignored: true, reason: "rate_limited_sender" }, 200, corsHeaders);
+    return ok({ ok: true, ignored: true, reason: "rate_limited_sender" }, 200);
   }
 
   try {
@@ -791,7 +795,7 @@ const opt = handleOptions(req);
 
     const reply = await runAgentForMerchantChat(svc, merchantId, merchantName, transcript, body, { user: String(msg.sender_id), sessionId: String(msg.thread_id) });
     const finalText = String(reply ?? "").trim();
-    if (!finalText) return json({ ok: true, ignored: true, reason: "empty_reply" }, 200, corsHeaders);
+    if (!finalText) return ok({ ok: true, ignored: true, reason: "empty_reply" }, 200);
 
     await ensureAiAssistantProfile();
 
@@ -803,11 +807,10 @@ const opt = handleOptions(req);
     });
     if (insErr) throw insErr;
 
-    return json({ ok: true, replied: true }, 200, corsHeaders);
+    return ok({ ok: true, replied: true }, 200);
   } catch (e) {
     // If we failed to reply, remove the receipt so a webhook retry can attempt again.
     await svc.from("merchant_chat_ai_receipts").delete().eq("message_id", msg.id);
-    return errorJson(String((e as any)?.message ?? e), 500, "INTERNAL");
+    return fail(String((e as any)?.message ?? e), 500, "INTERNAL");
   }
-  }),
-);
+}));
