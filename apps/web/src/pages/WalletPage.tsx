@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 import { invokeEdge } from '../lib/edgeInvoke';
 import { errorText } from '../lib/errors';
 import { formatIQD, formatSignedIQD } from '../lib/money';
-import { buildShareUrl, buildTripShareMessage, copyToClipboard } from '../lib/tripShare';
+import { buildShareUrl, copyToClipboard } from '../lib/tripShare';
 
 type WalletAccountRow = {
   user_id: string;
