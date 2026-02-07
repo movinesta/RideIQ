@@ -75,7 +75,7 @@ Deno.serve((req) => withRequestContext('safety-report', req, async (ctx) => {
         await logAppEvent({
             event_type: 'safety_report_error',
             actor_id: user.id,
-            actor_type: 'user',
+            actor_type: 'rider',
             payload: { reported_user_id: body.reported_user_id, error: error.message },
         });
         return errorJson(error.message, 400, 'REPORT_ERROR', undefined, ctx.headers);
@@ -84,7 +84,7 @@ Deno.serve((req) => withRequestContext('safety-report', req, async (ctx) => {
     await logAppEvent({
         event_type: 'safety_report_created',
         actor_id: user.id,
-        actor_type: 'user',
+        actor_type: 'rider',
         payload: {
             report_id: data.id,
             reported_user_id: body.reported_user_id,
