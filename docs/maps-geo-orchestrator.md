@@ -1,6 +1,6 @@
 # Geo Orchestrator (Maps, Directions, Geocoding) — Architecture Notes
 
-This repo supports multiple map providers with **fallback** (Google → Mapbox → HERE → Thunderforest) and a server-side **Geo API** that centralizes all third-party routing/geocoding calls.
+This repo supports multiple map providers with **fallback** (Google → Mapbox → HERE → OpenRouteService) and a server-side **Geo API** that centralizes all third-party routing/geocoding calls. Thunderforest remains the renderer-only tile provider.
 
 ## Goals
 
@@ -58,3 +58,5 @@ Set these in your Supabase Edge Function environment:
 - `MAPBOX_PUBLIC_TOKEN` (Mapbox token)
 - `HERE_API_KEY`
 - `THUNDERFOREST_API_KEY`
+- `ORS_API_KEY` (OpenRouteService)
+- `OPENROUTESERVICE_API_KEY` (OpenRouteService fallback alias)

@@ -64,7 +64,7 @@ export function providerHasServerKey(provider: ProviderCode): boolean {
     case 'thunderforest':
       return Boolean(Deno.env.get('THUNDERFOREST_API_KEY'));
     case 'ors':
-      return Boolean(Deno.env.get('ORS_API_KEY'));
+      return Boolean(Deno.env.get('ORS_API_KEY') ?? Deno.env.get('OPENROUTESERVICE_API_KEY'));
     default:
       return false;
   }
@@ -81,7 +81,7 @@ export function getServerKey(provider: ProviderCode): string {
     case 'thunderforest':
       return (Deno.env.get('THUNDERFOREST_API_KEY') ?? '').trim();
     case 'ors':
-      return (Deno.env.get('ORS_API_KEY') ?? '').trim();
+      return (Deno.env.get('ORS_API_KEY') ?? Deno.env.get('OPENROUTESERVICE_API_KEY') ?? '').trim();
   }
 }
 

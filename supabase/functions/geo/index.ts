@@ -157,6 +157,10 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
   if (!mapboxAllowedForRenderer(renderer)) {
     if (!exclude.includes('mapbox')) exclude.push('mapbox');
   }
+  if (renderer === 'thunderforest' && exclude.includes('ors')) {
+    // Ensure Thunderforest (render-only) can always fall back to ORS for server-side routing/geocoding.
+    exclude.splice(exclude.indexOf('ors'), 1);
+  }
 
   async function logAttempt(params: {
     provider: ProviderCode;

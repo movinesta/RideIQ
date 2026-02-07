@@ -85,7 +85,7 @@ function providerHasKey(p: ProviderCode): boolean {
     case 'thunderforest':
       return Boolean(envTrim('THUNDERFOREST_API_KEY'));
     case 'ors':
-      return Boolean(envTrim('ORS_API_KEY'));
+      return Boolean(envTrim('ORS_API_KEY') || envTrim('OPENROUTESERVICE_API_KEY'));
     default:
       return false;
   }
