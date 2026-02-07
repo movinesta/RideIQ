@@ -110,7 +110,7 @@ export async function mapboxGeocode(args: {
           raw: { type: f?.properties?.feature_type, accuracy: f?.properties?.accuracy },
         } as GeoSearchResult;
       })
-      .filter((r) => Number.isFinite(r.location.lat) && Number.isFinite(r.location.lng) && r.label);
+      .filter((r: GeoSearchResult) => Number.isFinite(r.location.lat) && Number.isFinite(r.location.lng) && r.label);
     return { raw, normalized };
   } finally {
     cleanup();
@@ -162,7 +162,7 @@ export async function mapboxReverse(args: {
           raw: { type: f?.properties?.feature_type, accuracy: f?.properties?.accuracy },
         } as GeoSearchResult;
       })
-      .filter((r) => Number.isFinite(r.location.lat) && Number.isFinite(r.location.lng) && r.label);
+      .filter((r: GeoSearchResult) => Number.isFinite(r.location.lat) && Number.isFinite(r.location.lng) && r.label);
     return { raw, normalized };
   } finally {
     cleanup();
