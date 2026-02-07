@@ -44,7 +44,7 @@ export async function googleGeocode(args: {
       provider_place_id: typeof r?.place_id === 'string' ? r.place_id : undefined,
       raw: { types: r?.types, location_type: r?.geometry?.location_type },
       context: { address_components: r?.address_components },
-    })).filter((x) => x.label && Number.isFinite(x.location.lat) && Number.isFinite(x.location.lng));
+    })).filter((x: GeoSearchResult) => x.label && Number.isFinite(x.location.lat) && Number.isFinite(x.location.lng));
     return { raw, normalized };
   } finally {
     cleanup();
@@ -84,7 +84,7 @@ export async function googleReverseGeocode(args: {
       provider_place_id: typeof r?.place_id === 'string' ? r.place_id : undefined,
       raw: { types: r?.types, location_type: r?.geometry?.location_type },
       context: { address_components: r?.address_components },
-    })).filter((x) => x.label && Number.isFinite(x.location.lat) && Number.isFinite(x.location.lng));
+    })).filter((x: GeoSearchResult) => x.label && Number.isFinite(x.location.lat) && Number.isFinite(x.location.lng));
     return { raw, normalized };
   } finally {
     cleanup();

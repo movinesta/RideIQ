@@ -92,7 +92,7 @@ export async function hereGeocode(args: {
       provider_place_id: typeof it?.id === 'string' ? it.id : undefined,
       raw: { resultType: it?.resultType, houseNumberType: it?.houseNumberType },
       context: it?.address ?? undefined,
-    })).filter((r) => Number.isFinite(r.location.lat) && Number.isFinite(r.location.lng) && r.label);
+    })).filter((r: GeoSearchResult) => Number.isFinite(r.location.lat) && Number.isFinite(r.location.lng) && r.label);
     return { raw, normalized };
   } finally {
     cleanup();
@@ -125,7 +125,7 @@ export async function hereRevGeocode(args: {
       provider_place_id: typeof it?.id === 'string' ? it.id : undefined,
       raw: { resultType: it?.resultType },
       context: it?.address ?? undefined,
-    })).filter((r) => Number.isFinite(r.location.lat) && Number.isFinite(r.location.lng) && r.label);
+    })).filter((r: GeoSearchResult) => Number.isFinite(r.location.lat) && Number.isFinite(r.location.lng) && r.label);
     return { raw, normalized };
   } finally {
     cleanup();
