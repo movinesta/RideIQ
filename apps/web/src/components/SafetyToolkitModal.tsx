@@ -13,13 +13,6 @@ type Props = {
   rideStatus: string;
 };
 
-type TripShareCreateResponse = {
-  ok?: boolean;
-  token?: string;
-  expires_at?: string;
-  requestId?: string;
-};
-
 type TrustedContact = {
   id: string;
   name: string;
