@@ -75,6 +75,16 @@ verify_jwt = false
 [functions.maps-usage]
 verify_jwt = false
 
+# User JWT endpoints with in-function auth (avoid gateway JWT validation issues)
+[functions.fare-engine]
+verify_jwt = false
+
+[functions.geo]
+verify_jwt = false
+
+[functions.driver-location-update]
+verify_jwt = false
+
 # Scheduled / maintenance endpoints (protected by CRON_SECRET)
 [functions.driver-leaderboard-refresh]
 verify_jwt = false
