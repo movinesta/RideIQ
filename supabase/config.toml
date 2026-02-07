@@ -41,6 +41,9 @@ secrets = "env(AUTH_HOOK_SECRET)"
 [functions.asiapay-notify]
 verify_jwt = false
 
+[functions.ride-transition]
+verify_jwt = false
+
 [functions.driver-accept]
 verify_jwt = false
 
