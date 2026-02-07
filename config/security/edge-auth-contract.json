@@ -56,6 +56,9 @@
     "fraud-score-runner": {
       "auth": "cron_secret"
     },
+    "geo": {
+      "auth": "user_jwt"
+    },
     "hotspot-guidance": {
       "auth": "user_jwt"
     },
