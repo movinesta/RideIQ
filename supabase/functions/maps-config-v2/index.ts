@@ -5,7 +5,7 @@ import { createServiceClient } from '../_shared/supabase.ts';
 import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
 import { issueTelemetryTokenV1, type TelemetryTokenPayloadV1 } from '../_shared/telemetryToken.ts';
 
-type ProviderCode = 'google' | 'mapbox' | 'here' | 'thunderforest';
+type ProviderCode = 'google' | 'mapbox' | 'here' | 'thunderforest' | 'ors';
 type Capability = 'render' | 'directions' | 'geocode' | 'distance_matrix';
 
 type MapsConfigV2Response = {
@@ -72,7 +72,7 @@ function enforceOrigin(request: Request, allowedOrigins: string[]) {
   }
 }
 
-const ALL_PROVIDERS: ProviderCode[] = ['google', 'mapbox', 'here', 'thunderforest'];
+const ALL_PROVIDERS: ProviderCode[] = ['google', 'mapbox', 'here', 'thunderforest', 'ors'];
 
 function providerHasKey(p: ProviderCode): boolean {
   switch (p) {
@@ -84,6 +84,8 @@ function providerHasKey(p: ProviderCode): boolean {
       return Boolean(envTrim('HERE_API_KEY'));
     case 'thunderforest':
       return Boolean(envTrim('THUNDERFOREST_API_KEY'));
+    case 'ors':
+      return Boolean(envTrim('ORS_API_KEY'));
     default:
       return false;
   }
@@ -112,6 +114,9 @@ function buildClientConfig(p: ProviderCode, opts: { language: string; region: st
       const apiKey = envTrim('THUNDERFOREST_API_KEY');
       const style = envTrim('THUNDERFOREST_STYLE') || 'atlas';
       return { apiKey, style, language, region };
+    }
+    case 'ors': {
+      return { language, region };
     }
   }
 }

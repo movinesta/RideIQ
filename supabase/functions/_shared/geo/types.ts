@@ -1,7 +1,7 @@
 // Shared geo types used by the Supabase Edge geo orchestrator and provider adapters.
 // These are intentionally provider-agnostic so the frontend can treat the response uniformly.
 
-export type ProviderCode = 'google' | 'mapbox' | 'here' | 'thunderforest';
+export type ProviderCode = 'google' | 'mapbox' | 'here' | 'thunderforest' | 'ors';
 export type Capability = 'directions' | 'geocode' | 'distance_matrix';
 
 export type LatLng = { lat: number; lng: number };
