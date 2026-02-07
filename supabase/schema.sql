@@ -5975,7 +5975,7 @@ ALTER FUNCTION public.customer_addresses_enforce_single_default() OWNER TO postg
 
 CREATE FUNCTION public.dispatch_accept_ride(p_request_id uuid, p_driver_id uuid) RETURNS TABLE(ride_id uuid, ride_status public.ride_status, request_status public.ride_request_status, wallet_hold_id uuid, rider_id uuid, driver_id uuid, started_at timestamp with time zone, completed_at timestamp with time zone, fare_amount_iqd integer, currency text)
     LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog, public, extensions'
+    SET search_path TO pg_catalog, public, extensions
     AS $$
 DECLARE
   rr record;
@@ -6112,7 +6112,7 @@ COMMENT ON FUNCTION public.dispatch_accept_ride(p_request_id uuid, p_driver_id u
 
 CREATE FUNCTION public.dispatch_accept_ride_user(p_request_id uuid) RETURNS TABLE(ride_id uuid, ride_status public.ride_status, request_status public.ride_request_status, wallet_hold_id uuid, rider_id uuid, driver_id uuid, started_at timestamp with time zone, completed_at timestamp with time zone, fare_amount_iqd integer, currency text)
     LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog, public, extensions'
+    SET search_path TO pg_catalog, public, extensions
     AS $$
 DECLARE
   v_uid uuid;
@@ -6139,7 +6139,7 @@ ALTER FUNCTION public.dispatch_accept_ride_user(p_request_id uuid) OWNER TO post
 
 CREATE FUNCTION public.dispatch_match_ride(p_request_id uuid, p_rider_id uuid, p_radius_m numeric DEFAULT 5000, p_limit_n integer DEFAULT 20, p_match_ttl_seconds integer DEFAULT 120, p_stale_after_seconds integer DEFAULT 120) RETURNS TABLE(id uuid, status public.ride_request_status, assigned_driver_id uuid, match_deadline timestamp with time zone, match_attempts integer, matched_at timestamp with time zone)
     LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog, public, extensions'
+    SET search_path TO pg_catalog, public, extensions
     AS $$
 declare
   rr record;
@@ -6376,7 +6376,7 @@ COMMENT ON FUNCTION public.dispatch_match_ride(p_request_id uuid, p_rider_id uui
 
 CREATE FUNCTION public.dispatch_match_ride_user(p_request_id uuid, p_radius_m numeric DEFAULT 5000, p_limit_n integer DEFAULT 20, p_match_ttl_seconds integer DEFAULT 120, p_stale_after_seconds integer DEFAULT 120) RETURNS TABLE(id uuid, status public.ride_request_status, assigned_driver_id uuid, match_deadline timestamp with time zone, match_attempts integer, matched_at timestamp with time zone)
     LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'pg_catalog, public, extensions'
+    SET search_path TO pg_catalog, public, extensions
     AS $$
 DECLARE
   v_uid uuid;

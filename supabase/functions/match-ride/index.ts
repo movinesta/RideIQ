@@ -127,7 +127,10 @@ Deno.serve((req) => withRequestContext('match-ride', req, async (ctx) => {
         'Geospatial nearest-neighbor operator `<->` is unavailable for the current PostGIS schema setup.',
         503,
         'GEOSPATIAL_SCHEMA_MISMATCH',
-        { hint: 'Ensure PostGIS is installed and supports KNN ordering for geography (GiST). Verify `driver_locations` has a GiST index on `loc` and your PostGIS version exposes the `<->` operator for geography under the configured schema (commonly `extensions`).' },
+        {
+          hint:
+            'Verify function search_path is not quoted as a single string. Use `ALTER FUNCTION public.dispatch_match_ride(...) SET search_path TO pg_catalog, public, extensions;` (and same for `dispatch_match_ride_user`). Also verify `driver_locations` has a GiST index on `loc`.',
+        },
         ctx.headers,
       );
     }
