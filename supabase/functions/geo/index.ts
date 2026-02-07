@@ -7,6 +7,7 @@ import { googleComputeRoutes, googleComputeRouteMatrix } from '../_shared/geo/pr
 import { googleGeocode, googleReverseGeocode } from '../_shared/geo/providers/googleGeocoding.ts';
 import { mapboxDirections, mapboxGeocode, mapboxMatrix, mapboxReverse } from '../_shared/geo/providers/mapbox.ts';
 import { hereGeocode, hereRevGeocode, hereRoutes } from '../_shared/geo/providers/here.ts';
+import { orsDirections, orsGeocode, orsMatrix, orsReverse } from '../_shared/geo/providers/ors.ts';
 import {
   createServiceClientForGeo,
   getProviderDefaults,
@@ -58,7 +59,7 @@ function estimateUnits(action: Action, body: any): number {
 }
 
 function normalizeProviderCode(v: unknown): ProviderCode | null {
-  if (v === 'google' || v === 'mapbox' || v === 'here' || v === 'thunderforest') return v;
+  if (v === 'google' || v === 'mapbox' || v === 'here' || v === 'thunderforest' || v === 'ors') return v;
   return null;
 }
 
@@ -97,6 +98,10 @@ function endpointHint(provider: ProviderCode, action: Action): string {
     case 'here':
       if (action === 'route') return 'router.hereapi.com/v8/routes';
       return 'geocode.search.hereapi.com/v1';
+    case 'ors':
+      if (action === 'route') return 'api.openrouteservice.org/v2/directions';
+      if (action === 'matrix') return 'api.openrouteservice.org/v2/matrix';
+      return 'api.openrouteservice.org/geocode';
     case 'thunderforest':
     default:
       return 'n/a';
@@ -382,6 +387,17 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
             language,
           });
           raw = out.raw; normalized = out.normalized;
+        } else if (provider === 'ors') {
+          const orsProfile = profile === 'walking' ? 'foot-walking' : profile === 'cycling' ? 'cycling-regular' : 'driving-car';
+          const out = await orsDirections({
+            apiKey: key,
+            origin,
+            destination,
+            profile: orsProfile,
+            language,
+            steps,
+          });
+          raw = out.raw; normalized = out.normalized;
         } else {
           throw new Error('provider_unsupported_for_route');
         }
@@ -458,6 +474,15 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
         } else if (provider === 'here') {
           const out = await hereGeocode({ apiKey: key, query, language, limit, inFilter: `countryCode:${region === 'IQ' ? 'IRQ' : region}` });
           raw = out.raw; normalized = out.normalized;
+        } else if (provider === 'ors') {
+          const out = await orsGeocode({
+            apiKey: key,
+            query,
+            language,
+            region,
+            limit,
+          });
+          raw = out.raw; normalized = out.normalized;
         } else {
           throw new Error('provider_unsupported_for_geocode');
         }
@@ -523,6 +548,15 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
           raw = out.raw; normalized = out.normalized;
         } else if (provider === 'here') {
           const out = await hereRevGeocode({ apiKey: key, at, language, limit });
+          raw = out.raw; normalized = out.normalized;
+        } else if (provider === 'ors') {
+          const out = await orsReverse({
+            apiKey: key,
+            at,
+            language,
+            region,
+            limit,
+          });
           raw = out.raw; normalized = out.normalized;
         } else {
           throw new Error('provider_unsupported_for_reverse');
@@ -598,6 +632,19 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
             sources,
             destinations: destinationsIdx,
             annotations: ['duration', 'distance'],
+          });
+          raw = out.raw; normalized = out.normalized;
+        } else if (provider === 'ors') {
+          const locations = [...origins, ...destinations];
+          const sources = origins.map((_, i) => i);
+          const destinationsIdx = destinations.map((_, i) => i + origins.length);
+          const out = await orsMatrix({
+            apiKey: key,
+            profile: 'driving-car',
+            locations,
+            sources,
+            destinations: destinationsIdx,
+            metrics: ['duration', 'distance'],
           });
           raw = out.raw; normalized = out.normalized;
         } else {

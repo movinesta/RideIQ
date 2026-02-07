@@ -7,7 +7,7 @@ import { invokeEdge } from '../lib/edgeInvoke';
 import { errorText } from '../lib/errors';
 import { supabase } from '../lib/supabaseClient';
 
-type ProviderCode = 'google' | 'mapbox' | 'here' | 'thunderforest';
+type ProviderCode = 'google' | 'mapbox' | 'here' | 'thunderforest' | 'ors';
 
 type ProviderRow = {
   provider_code: ProviderCode;
@@ -116,7 +116,7 @@ async function fetchCapabilities(): Promise<CapabilityRow[]> {
 async function fetchActiveProvider(): Promise<ActiveProviderResp> {
   const { data } = await invokeEdge<ActiveProviderResp>('maps-config-v2', {
     capability: 'render',
-    supported: ['google', 'mapbox', 'here', 'thunderforest'],
+    supported: ['google', 'mapbox', 'here', 'thunderforest', 'ors'],
   });
   if (!data?.ok) throw new Error('maps-config-v2 returned not ok');
   return data;
@@ -990,6 +990,7 @@ export default function AdminMapsPage() {
                   <option value="mapbox">Mapbox</option>
                   <option value="here">HERE</option>
                   <option value="thunderforest">Thunderforest</option>
+                  <option value="ors">OpenRouteService</option>
                 </select>
               </div>
               <div>
