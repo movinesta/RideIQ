@@ -151,6 +151,11 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
   const exclude: ProviderCode[] = Array.isArray(body?.exclude)
     ? (body.exclude.map(normalizeProviderCode).filter(Boolean) as ProviderCode[])
     : [];
+  if (exclude.includes('ors')) {
+    // ORS is the only non-renderer provider we can use when maps are Thunderforest,
+    // so never allow client-side excludes to block it.
+    exclude.splice(exclude.indexOf('ors'), 1);
+  }
   if (!googleAllowedForRenderer(renderer)) {
     if (!exclude.includes('google')) exclude.push('google');
   }
