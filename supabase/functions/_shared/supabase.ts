@@ -72,9 +72,9 @@ export async function requireUser(req: Request, ctx?: RequestCtxLike) {
   }
 
   // Fast-path: local JWT verification using JWKS when asymmetric signing keys are enabled.
-  // We pass the bearer token via the `accessToken` option (see Supabase JWT guide).
-  const supabase = createUserClient(req);
-  const { data, error } = await supabase.auth.getClaims();
+  // Use a public client and pass the token to getClaims to avoid accessToken auth proxies.
+  const supabase = createPublicClient();
+  const { data, error } = await supabase.auth.getClaims(token);
   if (error || !data?.claims) {
     // Fallback to network-backed verification for compatibility / older projects.
     return await requireUserStrict(req);
