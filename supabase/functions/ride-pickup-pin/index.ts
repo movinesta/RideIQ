@@ -9,9 +9,9 @@ type Body = {
   ride_id?: string;
 };
 
-function computePin(secret: string, rideId: string, riderId: string, driverId: string): string {
+async function computePin(secret: string, rideId: string, riderId: string, driverId: string): Promise<string> {
   const msg = `ride_pin:${rideId}:${riderId}:${driverId}`;
-  const bytes = hmacSha256Bytes(secret, msg);
+  const bytes = await hmacSha256Bytes(secret, msg);
   const n = ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
   const pin = (n % 10000).toString().padStart(4, '0');
   return pin;
@@ -85,7 +85,7 @@ Deno.serve((req) => withRequestContext('ride-pickup-pin', req, async (ctx) => {
       return errorJson('Missing PIN_SECRET function secret', 500, 'MISSING_SECRET');
     }
 
-    const pin = computePin(secret, ride.id, ride.rider_id, ride.driver_id);
+    const pin = await computePin(secret, ride.id, ride.rider_id, ride.driver_id);
 
     await logAppEvent({
       event_type: 'pickup_pin_requested',

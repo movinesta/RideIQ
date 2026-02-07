@@ -111,7 +111,11 @@ Deno.serve((req) =>
         // Compatibility fallback for deployments that still keep PIN_SECRET only in Edge env.
         if (msg === 'missing_pin_secret') {
           const fb = await fallbackVerifyWithEdgeSecret({ supabase, rideId, pin });
-          if ('error' in fb) return errorJson(fb.error, fb.status, fb.code ?? 'PIN_VERIFY_FAILED', undefined, ctx.headers);
+          if ('error' in fb) {
+            const fbError = typeof fb.error === 'string' ? fb.error : 'PIN verification failed';
+            const fbCode = fb.code ?? 'PIN_VERIFY_FAILED';
+            return errorJson(fbError, fb.status, fbCode, undefined, ctx.headers);
+          }
           result = fb.data;
         } else {
           const status = msg === 'unauthorized' ? 401 : msg === 'forbidden' ? 403 : msg === 'ride_not_found' ? 404 : 409;
