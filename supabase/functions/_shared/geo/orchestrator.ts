@@ -53,18 +53,26 @@ export async function getProviderDefaults(
   };
 }
 
+function envFirstNonEmpty(...names: string[]): string {
+  for (const name of names) {
+    const value = (Deno.env.get(name) ?? '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
 export function providerHasServerKey(provider: ProviderCode): boolean {
   switch (provider) {
     case 'google':
-      return Boolean(Deno.env.get('MAPS_SERVER_KEY') ?? Deno.env.get('GOOGLE_MAPS_SERVER_KEY'));
+      return envFirstNonEmpty('MAPS_SERVER_KEY', 'GOOGLE_MAPS_SERVER_KEY').length > 0;
     case 'mapbox':
-      return Boolean(Deno.env.get('MAPBOX_PUBLIC_TOKEN') ?? Deno.env.get('MAPBOX_SECRET_TOKEN'));
+      return envFirstNonEmpty('MAPBOX_SECRET_TOKEN', 'MAPBOX_PUBLIC_TOKEN').length > 0;
     case 'here':
-      return Boolean(Deno.env.get('HERE_API_KEY'));
+      return envFirstNonEmpty('HERE_API_KEY').length > 0;
     case 'thunderforest':
-      return Boolean(Deno.env.get('THUNDERFOREST_API_KEY'));
+      return envFirstNonEmpty('THUNDERFOREST_API_KEY').length > 0;
     case 'ors':
-      return Boolean(Deno.env.get('ORS_API_KEY') ?? Deno.env.get('OPENROUTESERVICE_API_KEY'));
+      return envFirstNonEmpty('ORS_API_KEY', 'OPENROUTESERVICE_API_KEY').length > 0;
     default:
       return false;
   }
@@ -73,15 +81,15 @@ export function providerHasServerKey(provider: ProviderCode): boolean {
 export function getServerKey(provider: ProviderCode): string {
   switch (provider) {
     case 'google':
-      return (Deno.env.get('MAPS_SERVER_KEY') ?? Deno.env.get('GOOGLE_MAPS_SERVER_KEY') ?? '').trim();
+      return envFirstNonEmpty('MAPS_SERVER_KEY', 'GOOGLE_MAPS_SERVER_KEY');
     case 'mapbox':
-      return (Deno.env.get('MAPBOX_SECRET_TOKEN') ?? Deno.env.get('MAPBOX_PUBLIC_TOKEN') ?? '').trim();
+      return envFirstNonEmpty('MAPBOX_SECRET_TOKEN', 'MAPBOX_PUBLIC_TOKEN');
     case 'here':
-      return (Deno.env.get('HERE_API_KEY') ?? '').trim();
+      return envFirstNonEmpty('HERE_API_KEY');
     case 'thunderforest':
-      return (Deno.env.get('THUNDERFOREST_API_KEY') ?? '').trim();
+      return envFirstNonEmpty('THUNDERFOREST_API_KEY');
     case 'ors':
-      return (Deno.env.get('ORS_API_KEY') ?? Deno.env.get('OPENROUTESERVICE_API_KEY') ?? '').trim();
+      return envFirstNonEmpty('ORS_API_KEY', 'OPENROUTESERVICE_API_KEY');
   }
 }
 

@@ -534,7 +534,9 @@ export default function AdminMapsPage() {
 
           <div className="mt-4">
             <div className="text-sm font-semibold">Request volume (last 1h / 24h)</div>
-            <div className="text-xs text-gray-500 mt-1">Counts are based on server-side request logs. Refreshes every 4s.</div>
+            <div className="text-xs text-gray-500 mt-1">
+              Counts are based on server-side request logs (synthetic missing-key attempts are excluded). Refreshes every 4s.
+            </div>
             {statsQ.isLoading ? (
               <div className="mt-2 text-sm text-gray-600">Loading…</div>
             ) : statsQ.isError ? (

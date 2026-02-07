@@ -3506,6 +3506,7 @@ BEGIN
     ON l.provider_code = mc.provider_code
    AND l.capability = mc.capability
    AND l.created_at >= now() - interval '24 hours'
+   AND NOT (l.http_status = 424 AND COALESCE(l.error_code, '') = 'missing_provider_key')
   GROUP BY mc.provider_code, mc.capability
   ORDER BY mc.provider_code, mc.capability;
 END;
@@ -21480,7 +21481,7 @@ CREATE TABLE public.maps_requests_log (
     attempt_number integer DEFAULT 1 NOT NULL,
     fallback_reason text,
     CONSTRAINT maps_requests_log_action_chk CHECK ((action = ANY (ARRAY['route'::text, 'geocode'::text, 'reverse'::text, 'matrix'::text, 'directions'::text, 'reverse_geocode'::text, 'render'::text]))),
-    CONSTRAINT maps_requests_log_cap_chk CHECK ((capability = ANY (ARRAY['directions'::text, 'geocode'::text, 'distance_matrix'::text]))),
+    CONSTRAINT maps_requests_log_cap_chk CHECK ((capability = ANY (ARRAY['render'::text, 'directions'::text, 'geocode'::text, 'distance_matrix'::text]))),
     CONSTRAINT maps_requests_log_provider_chk CHECK ((provider_code = ANY (ARRAY['google'::text, 'mapbox'::text, 'here'::text, 'thunderforest'::text, 'ors'::text])))
 );
 
