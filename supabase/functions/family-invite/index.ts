@@ -51,7 +51,7 @@ Deno.serve((req) => withRequestContext('family-invite', req, async (ctx) => {
         await logAppEvent({
             event_type: 'family_invite_error',
             actor_id: user.id,
-            actor_type: 'user',
+            actor_type: 'rider',
             payload: { family_id: body.family_id, error: error.message },
         });
         return errorJson(error.message, 400, 'INVITE_ERROR', undefined, ctx.headers);
@@ -60,7 +60,7 @@ Deno.serve((req) => withRequestContext('family-invite', req, async (ctx) => {
     await logAppEvent({
         event_type: 'family_invite_sent',
         actor_id: user.id,
-        actor_type: 'user',
+        actor_type: 'rider',
         payload: { family_id: body.family_id, invite_email: body.invite_email },
     });
 

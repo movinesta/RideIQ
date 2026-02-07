@@ -20,7 +20,7 @@ Deno.serve((req) =>
 
     const payload = (await req.json().catch(() => null)) as Body | null;
     if (!payload?.kind || !payload?.title) {
-      return errorJson('invalid_body', 400, { required: ['kind', 'title'] });
+      return errorJson('invalid_body', 400, 'INVALID_BODY', { required: ['kind', 'title'] });
     }
 
     const anon = createAnonClient(req); // for is_admin() with user's JWT
@@ -46,11 +46,11 @@ Deno.serve((req) =>
       p_data: payload.data ?? {},
     });
 
-    if (error) return errorJson('notify_failed', 500, { message: error.message });
+    if (error) return errorJson('notify_failed', 500, 'NOTIFY_FAILED', { message: error.message });
 
     return json({ ok: true, notified: count ?? userIds.length });
   } catch (e) {
-    return errorJson('server_error', 500, { message: String(e) });
+    return errorJson('server_error', 500, 'SERVER_ERROR', { message: String(e) });
   }
   }),
 );

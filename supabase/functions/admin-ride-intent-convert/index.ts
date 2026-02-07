@@ -65,6 +65,9 @@ Deno.serve((req) =>
       dropoff_lat: intent.dropoff_lat,
       dropoff_lng: intent.dropoff_lng,
       product_code: intent.product_code ?? 'standard',
+      vehicle_class: null,
+      vehicle_year: null,
+      pickup_deadhead_m: null,
       context: {
         source: 'admin-ride-intent-convert',
         intent_id: intent.id,
