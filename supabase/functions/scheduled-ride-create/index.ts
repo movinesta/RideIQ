@@ -86,6 +86,7 @@ Deno.serve((req) =>
       dropoff_lat: body.dropoff_lat,
       dropoff_lng: body.dropoff_lng,
       product_code: productCode,
+      vehicle_class: null,
       context: {
         source: 'scheduled-ride-create',
         scheduled_at: when.toISOString(),

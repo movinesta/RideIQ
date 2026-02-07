@@ -14,9 +14,9 @@ function normalizeRpcErrorMessage(msg: string): string {
   return msg.replace(/^RPC error:\s*/i, '').trim();
 }
 
-function computePin(secret: string, rideId: string, riderId: string, driverId: string): string {
+async function computePin(secret: string, rideId: string, riderId: string, driverId: string): Promise<string> {
   const msg = `ride_pin:${rideId}:${riderId}:${driverId}`;
-  const bytes = hmacSha256Bytes(secret, msg);
+  const bytes = await hmacSha256Bytes(secret, msg);
   const n = ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
   return (n % 10000).toString().padStart(4, '0');
 }
@@ -44,7 +44,7 @@ async function fallbackVerifyWithEdgeSecret(opts: {
     return { error: 'Ride not found', status: 404, code: 'NOT_FOUND' } as const;
   }
 
-  const expected = computePin(secret, ride.id, (ride as any).rider_id, (ride as any).driver_id);
+  const expected = await computePin(secret, ride.id, (ride as any).rider_id, (ride as any).driver_id);
 
   if (opts.pin !== expected) {
     const { data, error } = await opts.supabase.rpc('ride_pickup_pin_record_failure', { p_ride_id: opts.rideId });
@@ -111,7 +111,7 @@ Deno.serve((req) =>
         // Compatibility fallback for deployments that still keep PIN_SECRET only in Edge env.
         if (msg === 'missing_pin_secret') {
           const fb = await fallbackVerifyWithEdgeSecret({ supabase, rideId, pin });
-          if ('error' in fb) return errorJson(fb.error, fb.status, fb.code, undefined, ctx.headers);
+          if ('error' in fb) return errorJson(fb.error, fb.status, fb.code ?? 'PIN_VERIFY_FAILED', undefined, ctx.headers);
           result = fb.data;
         } else {
           const status = msg === 'unauthorized' ? 401 : msg === 'forbidden' ? 403 : msg === 'ride_not_found' ? 404 : 409;

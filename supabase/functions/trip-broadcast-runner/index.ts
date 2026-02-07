@@ -53,7 +53,7 @@ Deno.serve((req) => withRequestContext('trip-broadcast-runner', req, async (ctx)
     // Require cron secret for this endpoint
     const cronError = requireCronSecret(req);
     if (cronError) {
-        return errorJson(cronError, 401, 'UNAUTHORIZED', undefined, ctx.headers);
+        return cronError;
     }
 
     const service = createServiceClient();
