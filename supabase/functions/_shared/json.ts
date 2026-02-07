@@ -49,7 +49,7 @@ export function json(data: unknown, status = 200, headers: Record<string, string
   const body = maybeAttachRequestMeta(data, headers);
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json', ...headers },
+    headers: { 'content-type': 'application/json', 'Access-Control-Allow-Origin': '*', ...headers },
   });
 }
 
