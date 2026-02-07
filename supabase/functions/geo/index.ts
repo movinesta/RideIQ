@@ -8,6 +8,7 @@ import { googleGeocode, googleReverseGeocode } from '../_shared/geo/providers/go
 import { mapboxDirections, mapboxGeocode, mapboxMatrix, mapboxReverse } from '../_shared/geo/providers/mapbox.ts';
 import { hereGeocode, hereRevGeocode, hereRoutes } from '../_shared/geo/providers/here.ts';
 import { orsDirections, orsGeocode, orsMatrix, orsReverse } from '../_shared/geo/providers/ors.ts';
+import { getOrsErrorCode, getOrsErrorMessage, isOrsNoRouteError } from '../_shared/geo/providers/orsErrors.ts';
 import {
   createServiceClientForGeo,
   getProviderDefaults,
@@ -106,6 +107,14 @@ function endpointHint(provider: ProviderCode, action: Action): string {
     default:
       return 'n/a';
   }
+}
+
+function envPositiveInt(name: string, fallback: number, bounds: { min: number; max: number }): number {
+  const raw = (Deno.env.get(name) ?? '').trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.max(bounds.min, Math.min(bounds.max, Math.trunc(n)));
 }
 
 export default Deno.serve((req: Request) => withRequestContext('geo', req, async (ctx) => {
@@ -282,19 +291,53 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
 
   // Choose provider and retry on provider errors, excluding failed providers.
   const tried: ProviderCode[] = [];
+  type AttemptFailure = {
+    provider: ProviderCode;
+    http_status: number;
+    error_code: string;
+    error_detail: string;
+    kind: 'no_route' | 'upstream';
+    ors_error_code?: number | null;
+    ors_error_message?: string | null;
+  };
+  const failures: AttemptFailure[] = [];
   const maxAttempts = 4;
+
+  function failureSummaries(limit = 8) {
+    return failures.slice(-limit).map((f) => ({
+      provider: f.provider,
+      http_status: f.http_status,
+      error_code: f.error_code,
+      error_detail: f.error_detail,
+      kind: f.kind,
+      ors_error_code: f.ors_error_code ?? undefined,
+      ors_error_message: f.ors_error_message ?? undefined,
+    }));
+  }
+
+  function allFailuresNoRoute(): boolean {
+    return failures.length > 0 && failures.every((f) => f.kind === 'no_route');
+  }
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const pickExclude = Array.from(new Set([...exclude, ...tried]));
     const provider = await pickProvider(service, capability, pickExclude);
     if (!provider) {
       if (tried.length > 0) {
+        if (action === 'route' && allFailuresNoRoute()) {
+          return errorJson('No route found between origin and destination', 404, 'no_route_found', {
+            action,
+            capability,
+            tried,
+            failures: failureSummaries(),
+            hint: 'Move pickup/dropoff to nearby roads and retry.',
+          });
+        }
         return errorJson('All providers failed', 502, 'providers_failed', {
           action,
           capability,
           tried,
-          exclude: pickExclude,
-          missing_server_keys: missingServerKeyProviders.length ? missingServerKeyProviders : undefined,
+          failures: failureSummaries(),
         });
       }
       return errorJson('No provider available for this capability', 503, 'no_provider', {
@@ -331,6 +374,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
     const cacheTtlSeconds = cacheEnabled ? Math.min(Math.max(60, Math.trunc(defaults!.cache_ttl_seconds!)), 60 * 60 * 24 * 7) : 0;
 
     const t0 = Date.now();
+    let attemptRequestSummary: Record<string, unknown> | undefined;
     try {
       if (action === 'route') {
         const origin = validateLatLng(body?.origin);
@@ -341,6 +385,15 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
         const steps = Boolean(body?.steps ?? false);
         const alternatives = Boolean(body?.alternatives ?? false);
         const cacheBypass = Boolean(body?.cache_bypass ?? false);
+        attemptRequestSummary = {
+          origin: summarizeLatLng(origin),
+          destination: summarizeLatLng(destination),
+          profile,
+          language,
+          region,
+          steps,
+          alternatives,
+        };
 
         const cacheKey = await makeCacheKey({
           v: 1,
@@ -415,6 +468,8 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
           raw = out.raw; normalized = out.normalized;
         } else if (provider === 'ors') {
           const orsProfile = profile === 'walking' ? 'foot-walking' : profile === 'cycling' ? 'cycling-regular' : 'driving-car';
+          // Increase ORS point snapping tolerance (default 350m can fail for off-road pickup pins).
+          const orsSnapRadiusMeters = envPositiveInt('ORS_DIRECTIONS_SNAP_RADIUS_METERS', 1200, { min: 50, max: 10000 });
           const out = await orsDirections({
             apiKey: key,
             origin,
@@ -422,6 +477,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
             profile: orsProfile,
             language,
             steps,
+            snapRadiusMeters: orsSnapRadiusMeters,
           });
           raw = out.raw; normalized = out.normalized;
         } else {
@@ -456,6 +512,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
         if (!query || query.length > 256) return errorJson('Invalid query', 400, 'bad_query');
         const limit = Math.max(1, Math.min(10, Number(body?.limit ?? 5)));
         const cacheBypass = Boolean(body?.cache_bypass ?? false);
+        attemptRequestSummary = { query_len: query.length, language, region, limit };
 
         const cacheKey = await makeCacheKey({ v: 1, action, capability, provider, query, language, region, limit });
         if (cacheEnabled && !cacheBypass) {
@@ -538,6 +595,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
         if (!at) return errorJson('Invalid coordinates', 400, 'bad_coords');
         const limit = Math.max(1, Math.min(10, Number(body?.limit ?? 3)));
         const cacheBypass = Boolean(body?.cache_bypass ?? false);
+        attemptRequestSummary = { at: summarizeLatLng(at), language, region, limit };
 
         const cacheKey = await makeCacheKey({ v: 1, action, capability, provider, at, language, region, limit });
         if (cacheEnabled && !cacheBypass) {
@@ -615,6 +673,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
         if (origins.length > 25 || destinations.length > 25) return errorJson('Matrix too large (max 25x25)', 400, 'matrix_too_large');
         const elements = origins.length * destinations.length;
         const cacheBypass = Boolean(body?.cache_bypass ?? false);
+        attemptRequestSummary = { origins: origins.length, destinations: destinations.length, language, region };
 
         const cacheKey = await makeCacheKey({ v: 1, action, capability, provider, origins, destinations, language, region });
         if (cacheEnabled && !cacheBypass) {
@@ -701,6 +760,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
       const message = err instanceof Error ? err.message : String(err);
 
       const errAny = err as any;
+      const rawBody = errAny?.rawBody;
       const retryAfterSeconds =
         typeof errAny?.rateLimit?.retryAfterSeconds === 'number' && Number.isFinite(errAny.rateLimit.retryAfterSeconds)
           ? Math.trunc(errAny.rateLimit.retryAfterSeconds)
@@ -716,6 +776,16 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
         ? 504
         : (typeof errAny?.httpStatus === 'number' && Number.isFinite(errAny.httpStatus) ? errAny.httpStatus : (parsedStatus ?? 502));
       const isInternal = message.startsWith('provider_unsupported_');
+      const orsErrorCode = provider === 'ors' ? getOrsErrorCode(rawBody) : null;
+      const orsErrorMessage = provider === 'ors' ? getOrsErrorMessage(rawBody) : null;
+      const orsNoRoute =
+        provider === 'ors' &&
+        action === 'route' &&
+        (
+          isOrsNoRouteError(rawBody) ||
+          (typeof orsErrorMessage === 'string' && /route could not be found|could not find point/i.test(orsErrorMessage)) ||
+          (message.startsWith('ors_directions_http_') && httpStatus === 404)
+        );
 
       let fallbackReason = 'upstream_error';
       let baseCooldownSeconds = 60;
@@ -735,8 +805,14 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
         fallbackReason = 'upstream_4xx';
         baseCooldownSeconds = 0;
       }
+      if (orsNoRoute) {
+        fallbackReason = 'no_route';
+        baseCooldownSeconds = 0;
+      }
 
-      const errorCode = parsedStatus ? `upstream_http_${parsedStatus}` : (isTimeout ? 'timeout' : 'upstream_error');
+      const errorCode = orsNoRoute
+        ? 'no_route_found'
+        : (parsedStatus ? `upstream_http_${parsedStatus}` : (isTimeout ? 'timeout' : 'upstream_error'));
 
       const shouldRecordHealth =
         !isInternal &&
@@ -751,6 +827,25 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
         });
       }
 
+      const failureDetail = orsErrorMessage ? `${message}: ${orsErrorMessage}` : message;
+      failures.push({
+        provider,
+        http_status: httpStatus,
+        error_code: errorCode,
+        error_detail: failureDetail,
+        kind: orsNoRoute ? 'no_route' : 'upstream',
+        ors_error_code: orsErrorCode,
+        ors_error_message: orsErrorMessage,
+      });
+
+      const responseSummary: Record<string, unknown> = {};
+      if (retryAfterSeconds != null) {
+        responseSummary.retry_after_seconds = retryAfterSeconds;
+        responseSummary.rate_limit_headers = errAny?.rateLimit?.headers;
+      }
+      if (orsErrorCode != null) responseSummary.ors_error_code = orsErrorCode;
+      if (orsErrorMessage) responseSummary.ors_error_message = orsErrorMessage;
+
       await logAttempt({
         provider,
         httpStatus,
@@ -760,14 +855,28 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
         triedProviders: [...tried],
         fallbackReason,
         errorCode,
-        errorDetail: message,
-        requestSummary: { attempted_provider: provider, tried },
-        responseSummary: retryAfterSeconds != null ? { retry_after_seconds: retryAfterSeconds, rate_limit_headers: errAny?.rateLimit?.headers } : undefined,
+        errorDetail: failureDetail,
+        requestSummary: { attempted_provider: provider, tried, ...(attemptRequestSummary ?? {}) },
+        responseSummary: Object.keys(responseSummary).length ? responseSummary : undefined,
       });
       // Try next provider.
       continue;
     }
   }
 
-  return errorJson('All providers failed', 502, 'providers_failed', { tried });
+  if (action === 'route' && allFailuresNoRoute()) {
+    return errorJson('No route found between origin and destination', 404, 'no_route_found', {
+      action,
+      capability,
+      tried,
+      failures: failureSummaries(),
+      hint: 'Move pickup/dropoff to nearby roads and retry.',
+    });
+  }
+  return errorJson('All providers failed', 502, 'providers_failed', {
+    action,
+    capability,
+    tried,
+    failures: failureSummaries(),
+  });
 }));

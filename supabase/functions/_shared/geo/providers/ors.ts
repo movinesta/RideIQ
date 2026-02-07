@@ -106,6 +106,7 @@ export async function orsDirections(args: {
   profile: OrsProfile;
   language: string;
   steps: boolean;
+  snapRadiusMeters?: number;
   signal?: AbortSignal;
   timeoutMs?: number;
 }): Promise<{ raw: unknown; normalized: GeoRouteResponse }> {
@@ -118,6 +119,10 @@ export async function orsDirections(args: {
     instructions: args.steps,
     units: 'm',
   };
+  if (Number.isFinite(args.snapRadiusMeters) && Number(args.snapRadiusMeters) > 0) {
+    const radius = Math.trunc(Number(args.snapRadiusMeters));
+    body.radiuses = [radius, radius];
+  }
   const directionsLanguage = normalizeOrsDirectionsLanguage(clampLanguage(args.language));
   if (args.steps && directionsLanguage) {
     body.language = directionsLanguage;

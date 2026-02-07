@@ -60,3 +60,4 @@ Set these in your Supabase Edge Function environment:
 - `THUNDERFOREST_API_KEY`
 - `ORS_API_KEY` (OpenRouteService)
 - `OPENROUTESERVICE_API_KEY` (OpenRouteService fallback alias)
+- `ORS_DIRECTIONS_SNAP_RADIUS_METERS` (optional, default `1200`; increases ORS road-snap tolerance for pickup/dropoff points)
