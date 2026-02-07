@@ -2,11 +2,11 @@ import { z } from 'npm:zod@4.3.6';
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
-} from 'npm:@simplewebauthn/server@13.0.0';
+} from 'npm:@simplewebauthn/server@12.0.0';
 import type {
   RegistrationResponseJSON,
   PublicKeyCredentialCreationOptionsJSON,
-} from 'npm:@simplewebauthn/types@13.0.0';
+} from 'npm:@simplewebauthn/types@12.0.0';
 
 import { withCors} from '../_shared/cors.ts';
 import { errorJson, json } from '../_shared/json.ts';
