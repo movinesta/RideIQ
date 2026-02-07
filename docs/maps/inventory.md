@@ -6,7 +6,8 @@ Active providers (in priority order):
 1) Google Maps
 2) Mapbox
 3) HERE
-4) Thunderforest (Leaflet tiles)
+4) OpenRouteService (server-side directions/geocoding)
+5) Thunderforest (Leaflet tiles)
 
 Provider selection is controlled in Postgres (`maps_providers`, `maps_provider_capabilities`) and served to the web app via the `maps-config-v2` Edge Function. The web app (`MapView`) initializes the selected renderer and falls back at runtime if a provider fails to load.
 
@@ -44,6 +45,6 @@ No usage of:
 
 ### Server keys (geo/directions)
 
-Server-side routing/geocoding is orchestrated by the `geo` Edge Function (provider selection + caching + rate limiting). Use separate server keys per provider if you enable these capabilities.
+Server-side routing/geocoding is orchestrated by the `geo` Edge Function (provider selection + caching + rate limiting). Use separate server keys per provider if you enable these capabilities (including OpenRouteService for non-Google/Mapbox rendering).
 
 Google-specific key restriction guidance still applies; see `docs/maps/key-restrictions.md`.
