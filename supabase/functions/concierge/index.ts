@@ -139,6 +139,9 @@ Deno.serve((req) => withRequestContext('concierge', req, async (ctx) => {
         }
         sessionId = newSession.id;
     }
+    if (!sessionId) {
+        return errorJson('Session is required', 400, 'SESSION_REQUIRED', undefined, ctx.headers);
+    }
 
     // Get session
     const { data: session, error: sessionError } = await service
@@ -207,7 +210,7 @@ Deno.serve((req) => withRequestContext('concierge', req, async (ctx) => {
     await logAppEvent({
         event_type: 'concierge_message',
         actor_id: user.id,
-        actor_type: 'user',
+        actor_type: 'rider',
         payload: { session_id: sessionId },
     });
 
