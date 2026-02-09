@@ -10,6 +10,22 @@
       "key": "service_role",
       "reason": "Consolidated privileged admin API router that dispatches to multiple admin endpoints. Uses service role for controlled bypass of RLS after explicit permission checks (requirePermission) and rate limiting."
     },
+    "admin-fraud-actions": {
+      "key": "service_role",
+      "reason": "Privileged admin endpoint: verifies admin permissions using user JWT, then uses service role for controlled reads/writes across fraud case/action tables."
+    },
+    "admin-fraud-cases": {
+      "key": "service_role",
+      "reason": "Privileged admin endpoint: verifies admin permissions using user JWT, then uses service role for controlled reads/writes across fraud case/action tables."
+    },
+    "admin-ride-intent-convert": {
+      "key": "service_role",
+      "reason": "Privileged admin endpoint: verifies admin permissions using user JWT, then uses service role to convert ride intents with controlled server-side updates."
+    },
+    "admin-users-list": {
+      "key": "service_role",
+      "reason": "Privileged admin endpoint: verifies admin permissions using user JWT, then uses service role to list users and admin membership safely."
+    },
     "ai-gateway": {
       "key": "service_role",
       "reason": "AI gateway that performs server-side logging, policy enforcement, and privileged reads/writes; uses service role."
