@@ -22,6 +22,12 @@ export type Database = {
       driver_rank_period: 'weekly' | 'monthly';
       driver_status: 'offline' | 'available' | 'on_trip' | 'suspended' | 'reserved' | 'assigned';
       driver_vehicle_type: 'car_private' | 'car_taxi' | 'motorcycle' | 'cargo';
+      family_member_role: 'guardian' | 'teen' | 'adult';
+      family_member_status: 'invited' | 'active' | 'suspended';
+      fraud_case_status: 'open' | 'closed';
+      fraud_subject_kind: 'user' | 'driver' | 'device' | 'ip_prefix';
+      gender_identity: 'female' | 'male' | 'nonbinary' | 'undisclosed';
+      gender_visibility: 'hidden' | 'shown_to_matches';
       incident_severity: 'low' | 'medium' | 'high' | 'critical';
       incident_status: 'open' | 'triaging' | 'resolved' | 'closed';
       kyc_document_status: 'pending' | 'approved' | 'rejected';
@@ -29,6 +35,8 @@ export type Database = {
       kyc_role_required: 'rider' | 'driver' | 'both';
       kyc_status: 'unverified' | 'pending' | 'verified' | 'rejected';
       kyc_submission_status: 'draft' | 'submitted' | 'in_review' | 'approved' | 'rejected' | 'resubmit_required';
+      live_activity_platform: 'ios' | 'android';
+      membership_status: 'active' | 'cancelled' | 'expired' | 'paused';
       merchant_chat_auto_reply_mode: 'smart' | 'always';
       merchant_order_delivery_status: 'requested' | 'assigned' | 'picked_up' | 'delivered' | 'cancelled';
       merchant_order_payment_method: 'wallet' | 'cod';
@@ -37,8 +45,11 @@ export type Database = {
       merchant_promotion_discount_type: 'percent' | 'fixed_iqd';
       merchant_status: 'draft' | 'pending' | 'approved' | 'suspended';
       message_direction: 'in' | 'out';
+      order_bundle_status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
       outbox_status: 'pending' | 'processing' | 'sent' | 'failed' | 'skipped';
       party_role: 'rider' | 'driver';
+      passkey_status: 'active' | 'revoked';
+      passkey_type: 'platform' | 'cross_platform';
       payment_intent_status: 'requires_payment_method' | 'requires_confirmation' | 'requires_capture' | 'succeeded' | 'failed' | 'canceled' | 'refunded';
       payment_provider_kind: 'zaincash' | 'asiapay' | 'qicard' | 'manual';
       payment_status: 'pending' | 'succeeded' | 'failed' | 'canceled' | 'refunded';
@@ -62,11 +73,13 @@ export type Database = {
       scheduled_ride_status: 'pending' | 'cancelled' | 'executed' | 'failed';
       settlement_party_type: 'driver' | 'merchant';
       settlement_request_status: 'requested' | 'approved' | 'rejected' | 'cancelled';
+      shift_status: 'draft' | 'scheduled' | 'active' | 'completed' | 'cancelled';
       sms_hook_status: 'sent' | 'failed';
       sos_event_status: 'triggered' | 'resolved' | 'canceled';
       support_ticket_priority: 'low' | 'normal' | 'high';
       support_ticket_status: 'open' | 'pending' | 'resolved' | 'closed';
       topup_status: 'created' | 'pending' | 'succeeded' | 'failed';
+      trip_live_status: 'driver_assigned' | 'driver_arriving' | 'driver_arrived' | 'trip_started' | 'trip_paused' | 'near_destination' | 'trip_completed' | 'trip_cancelled';
       trusted_contact_event_status: 'ok' | 'queued' | 'sent' | 'failed' | 'skipped';
       user_gender: 'male' | 'female' | 'unknown';
       user_interest_target_kind: 'merchant' | 'product' | 'category' | 'keyword';
@@ -77,6 +90,7 @@ export type Database = {
       wallet_entry_kind: 'topup' | 'ride_fare' | 'withdrawal' | 'adjustment';
       wallet_hold_kind: 'ride' | 'withdraw';
       wallet_hold_status: 'active' | 'captured' | 'released' | 'held';
+      webhook_job_status: 'queued' | 'failed' | 'succeeded' | 'dead';
       withdraw_payout_kind: 'qicard' | 'asiapay' | 'zaincash';
       withdraw_request_status: 'requested' | 'approved' | 'rejected' | 'paid' | 'cancelled';
     };
@@ -159,11 +173,66 @@ export type Database = {
         };
         Relationships: [];
       };
+      addon_offers: {
+        Row: {
+          converted_at: string | null;
+          created_at: string;
+          dismissed_at: string | null;
+          eligible_merchants: Json;
+          expires_at: string;
+          id: string;
+          order_id: string;
+          viewed_at: string | null;
+        };
+        Insert: {
+          converted_at?: string | null;
+          created_at?: string;
+          dismissed_at?: string | null;
+          eligible_merchants?: Json;
+          expires_at?: string;
+          id?: string;
+          order_id?: string;
+          viewed_at?: string | null;
+        };
+        Update: {
+          converted_at?: string | null;
+          created_at?: string;
+          dismissed_at?: string | null;
+          eligible_merchants?: Json;
+          expires_at?: string;
+          id?: string;
+          order_id?: string;
+          viewed_at?: string | null;
+        };
+        Relationships: [];
+      };
+      admin_action_throttle: {
+        Row: {
+          action_key: string;
+          bucket_start: string;
+          count: number;
+          user_id: string;
+        };
+        Insert: {
+          action_key?: string;
+          bucket_start?: string;
+          count?: number;
+          user_id?: string;
+        };
+        Update: {
+          action_key?: string;
+          bucket_start?: string;
+          count?: number;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       admin_audit_log: {
         Row: {
           action: Database['public']['Enums']['admin_audit_action'];
           actor_id: string;
           created_at: string;
+          details: Json | null;
           id: number;
           note: string | null;
           target_user_id: string;
@@ -172,6 +241,7 @@ export type Database = {
           action?: Database['public']['Enums']['admin_audit_action'];
           actor_id?: string;
           created_at?: string;
+          details?: Json | null;
           id?: number;
           note?: string | null;
           target_user_id?: string;
@@ -180,9 +250,142 @@ export type Database = {
           action?: Database['public']['Enums']['admin_audit_action'];
           actor_id?: string;
           created_at?: string;
+          details?: Json | null;
           id?: number;
           note?: string | null;
           target_user_id?: string;
+        };
+        Relationships: [];
+      };
+      admin_permissions: {
+        Row: {
+          created_at: string;
+          description: string | null;
+          id: number | null;
+          key: string;
+          name: string;
+        };
+        Insert: {
+          created_at?: string;
+          description?: string | null;
+          id?: number | null;
+          key?: string;
+          name?: string;
+        };
+        Update: {
+          created_at?: string;
+          description?: string | null;
+          id?: number | null;
+          key?: string;
+          name?: string;
+        };
+        Relationships: [];
+      };
+      admin_role_change_requests: {
+        Row: {
+          approved_at: string | null;
+          approved_by: string | null;
+          created_at: string;
+          created_by: string;
+          executed_at: string | null;
+          executed_by: string | null;
+          id: string | null;
+          note: string | null;
+          requested_role_keys: string[];
+          status: string;
+          target_user_id: string;
+        };
+        Insert: {
+          approved_at?: string | null;
+          approved_by?: string | null;
+          created_at?: string;
+          created_by?: string;
+          executed_at?: string | null;
+          executed_by?: string | null;
+          id?: string | null;
+          note?: string | null;
+          requested_role_keys?: string[];
+          status?: string;
+          target_user_id?: string;
+        };
+        Update: {
+          approved_at?: string | null;
+          approved_by?: string | null;
+          created_at?: string;
+          created_by?: string;
+          executed_at?: string | null;
+          executed_by?: string | null;
+          id?: string | null;
+          note?: string | null;
+          requested_role_keys?: string[];
+          status?: string;
+          target_user_id?: string;
+        };
+        Relationships: [];
+      };
+      admin_role_permissions: {
+        Row: {
+          created_at: string;
+          permission_id: number;
+          role_id: number;
+        };
+        Insert: {
+          created_at?: string;
+          permission_id?: number;
+          role_id?: number;
+        };
+        Update: {
+          created_at?: string;
+          permission_id?: number;
+          role_id?: number;
+        };
+        Relationships: [];
+      };
+      admin_roles: {
+        Row: {
+          created_at: string;
+          description: string | null;
+          id: number | null;
+          key: string;
+          name: string;
+        };
+        Insert: {
+          created_at?: string;
+          description?: string | null;
+          id?: number | null;
+          key?: string;
+          name?: string;
+        };
+        Update: {
+          created_at?: string;
+          description?: string | null;
+          id?: number | null;
+          key?: string;
+          name?: string;
+        };
+        Relationships: [];
+      };
+      admin_user_roles: {
+        Row: {
+          created_at: string;
+          granted_by: string | null;
+          note: string | null;
+          role_id: number;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          granted_by?: string | null;
+          note?: string | null;
+          role_id?: number;
+          user_id?: string;
+        };
+        Update: {
+          created_at?: string;
+          granted_by?: string | null;
+          note?: string | null;
+          role_id?: number;
+          user_id?: string;
         };
         Relationships: [];
       };
@@ -432,6 +635,78 @@ export type Database = {
         };
         Relationships: [];
       };
+      concierge_feedback: {
+        Row: {
+          comment: string | null;
+          created_at: string;
+          feedback_type: string | null;
+          id: string;
+          rating: number | null;
+          session_id: string;
+          user_id: string;
+        };
+        Insert: {
+          comment?: string | null;
+          created_at?: string;
+          feedback_type?: string | null;
+          id?: string;
+          rating?: number | null;
+          session_id?: string;
+          user_id?: string;
+        };
+        Update: {
+          comment?: string | null;
+          created_at?: string;
+          feedback_type?: string | null;
+          id?: string;
+          rating?: number | null;
+          session_id?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      concierge_sessions: {
+        Row: {
+          created_at: string;
+          expires_at: string;
+          history: Json;
+          id: string;
+          merchant_id: string | null;
+          mode: string;
+          preferences: Json;
+          selected_items: Json | null;
+          status: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          expires_at?: string;
+          history?: Json;
+          id?: string;
+          merchant_id?: string | null;
+          mode?: string;
+          preferences?: Json;
+          selected_items?: Json | null;
+          status?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Update: {
+          created_at?: string;
+          expires_at?: string;
+          history?: Json;
+          id?: string;
+          merchant_id?: string | null;
+          mode?: string;
+          preferences?: Json;
+          selected_items?: Json | null;
+          status?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       customer_addresses: {
         Row: {
           address_line1: string;
@@ -483,6 +758,54 @@ export type Database = {
         };
         Relationships: [];
       };
+      demand_hotspots: {
+        Row: {
+          center_lat: number;
+          center_lng: number;
+          created_at: string;
+          demand_level: number;
+          expected_wait_minutes: number | null;
+          id: string;
+          nearby_driver_count: number | null;
+          radius_m: number;
+          surge_multiplier: number | null;
+          trips_last_hour: number | null;
+          valid_until: string;
+          zone_id: string;
+          zone_name: string;
+        };
+        Insert: {
+          center_lat?: number;
+          center_lng?: number;
+          created_at?: string;
+          demand_level?: number;
+          expected_wait_minutes?: number | null;
+          id?: string;
+          nearby_driver_count?: number | null;
+          radius_m?: number;
+          surge_multiplier?: number | null;
+          trips_last_hour?: number | null;
+          valid_until?: string;
+          zone_id?: string;
+          zone_name?: string;
+        };
+        Update: {
+          center_lat?: number;
+          center_lng?: number;
+          created_at?: string;
+          demand_level?: number;
+          expected_wait_minutes?: number | null;
+          id?: string;
+          nearby_driver_count?: number | null;
+          radius_m?: number;
+          surge_multiplier?: number | null;
+          trips_last_hour?: number | null;
+          valid_until?: string;
+          zone_id?: string;
+          zone_name?: string;
+        };
+        Relationships: [];
+      };
       device_tokens: {
         Row: {
           created_at: string;
@@ -513,6 +836,54 @@ export type Database = {
           platform?: Database['public']['Enums']['device_platform'];
           token?: string;
           user_id?: string;
+        };
+        Relationships: [];
+      };
+      driver_coaching_tips: {
+        Row: {
+          acted_at: string | null;
+          action_url: string | null;
+          created_at: string;
+          dismissed_at: string | null;
+          driver_id: string;
+          expires_at: string | null;
+          id: string;
+          message: string;
+          priority: number;
+          tip_type: string;
+          title: string;
+          variant: string | null;
+          viewed_at: string | null;
+        };
+        Insert: {
+          acted_at?: string | null;
+          action_url?: string | null;
+          created_at?: string;
+          dismissed_at?: string | null;
+          driver_id?: string;
+          expires_at?: string | null;
+          id?: string;
+          message?: string;
+          priority?: number;
+          tip_type?: string;
+          title?: string;
+          variant?: string | null;
+          viewed_at?: string | null;
+        };
+        Update: {
+          acted_at?: string | null;
+          action_url?: string | null;
+          created_at?: string;
+          dismissed_at?: string | null;
+          driver_id?: string;
+          expires_at?: string | null;
+          id?: string;
+          message?: string;
+          priority?: number;
+          tip_type?: string;
+          title?: string;
+          variant?: string | null;
+          viewed_at?: string | null;
         };
         Relationships: [];
       };
@@ -645,6 +1016,60 @@ export type Database = {
           rides_completed?: number;
           score?: number | null;
           score_iqd?: number;
+        };
+        Relationships: [];
+      };
+      driver_shifts: {
+        Row: {
+          actual_end: string | null;
+          actual_start: string | null;
+          created_at: string;
+          driver_id: string;
+          id: string;
+          notes: string | null;
+          preferred_zones: string[] | null;
+          reminder_minutes_before: number;
+          reminder_sent_at: string | null;
+          scheduled_end: string;
+          scheduled_start: string;
+          status: Database['public']['Enums']['shift_status'];
+          target_earnings_iqd: number | null;
+          target_trips: number | null;
+          updated_at: string;
+        };
+        Insert: {
+          actual_end?: string | null;
+          actual_start?: string | null;
+          created_at?: string;
+          driver_id?: string;
+          id?: string;
+          notes?: string | null;
+          preferred_zones?: string[] | null;
+          reminder_minutes_before?: number;
+          reminder_sent_at?: string | null;
+          scheduled_end?: string;
+          scheduled_start?: string;
+          status?: Database['public']['Enums']['shift_status'];
+          target_earnings_iqd?: number | null;
+          target_trips?: number | null;
+          updated_at?: string;
+        };
+        Update: {
+          actual_end?: string | null;
+          actual_start?: string | null;
+          created_at?: string;
+          driver_id?: string;
+          id?: string;
+          notes?: string | null;
+          preferred_zones?: string[] | null;
+          reminder_minutes_before?: number;
+          reminder_sent_at?: string | null;
+          scheduled_end?: string;
+          scheduled_start?: string;
+          status?: Database['public']['Enums']['shift_status'];
+          target_earnings_iqd?: number | null;
+          target_trips?: number | null;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -792,6 +1217,189 @@ export type Database = {
         };
         Relationships: [];
       };
+      earnings_coach_sessions: {
+        Row: {
+          created_at: string;
+          driver_id: string;
+          earnings_context: Json | null;
+          history: Json;
+          id: string;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          driver_id?: string;
+          earnings_context?: Json | null;
+          history?: Json;
+          id?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          driver_id?: string;
+          earnings_context?: Json | null;
+          history?: Json;
+          id?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      earnings_forecasts: {
+        Row: {
+          confidence_pct: number;
+          created_at: string;
+          expected_earnings_iqd: number;
+          expected_trips: number;
+          forecast_date: string;
+          hour_of_day: number;
+          id: string;
+          same_hour_last_week_iqd: number | null;
+          zone_id: string;
+        };
+        Insert: {
+          confidence_pct?: number;
+          created_at?: string;
+          expected_earnings_iqd?: number;
+          expected_trips?: number;
+          forecast_date?: string;
+          hour_of_day?: number;
+          id?: string;
+          same_hour_last_week_iqd?: number | null;
+          zone_id?: string;
+        };
+        Update: {
+          confidence_pct?: number;
+          created_at?: string;
+          expected_earnings_iqd?: number;
+          expected_trips?: number;
+          forecast_date?: string;
+          hour_of_day?: number;
+          id?: string;
+          same_hour_last_week_iqd?: number | null;
+          zone_id?: string;
+        };
+        Relationships: [];
+      };
+      edge_webhook_outbox: {
+        Row: {
+          attempts: number;
+          created_at: string;
+          function_name: string;
+          id: number;
+          last_dispatched_at: string | null;
+          last_error: string | null;
+          last_http_status: number | null;
+          lock_id: string | null;
+          locked_at: string | null;
+          next_attempt_at: string;
+          payload: Json;
+          secret_name: string;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          attempts?: number;
+          created_at?: string;
+          function_name?: string;
+          id?: number;
+          last_dispatched_at?: string | null;
+          last_error?: string | null;
+          last_http_status?: number | null;
+          lock_id?: string | null;
+          locked_at?: string | null;
+          next_attempt_at?: string;
+          payload?: Json;
+          secret_name?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          attempts?: number;
+          created_at?: string;
+          function_name?: string;
+          id?: number;
+          last_dispatched_at?: string | null;
+          last_error?: string | null;
+          last_http_status?: number | null;
+          lock_id?: string | null;
+          locked_at?: string | null;
+          next_attempt_at?: string;
+          payload?: Json;
+          secret_name?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      families: {
+        Row: {
+          created_at: string;
+          created_by_user_id: string;
+          id: string;
+          name: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by_user_id?: string;
+          id?: string;
+          name?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by_user_id?: string;
+          id?: string;
+          name?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      family_members: {
+        Row: {
+          created_at: string;
+          family_id: string;
+          id: string;
+          invite_email: string | null;
+          invite_expires_at: string | null;
+          invite_token_hash: string | null;
+          joined_at: string | null;
+          role: Database['public']['Enums']['family_member_role'];
+          status: Database['public']['Enums']['family_member_status'];
+          updated_at: string;
+          user_id: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          family_id?: string;
+          id?: string;
+          invite_email?: string | null;
+          invite_expires_at?: string | null;
+          invite_token_hash?: string | null;
+          joined_at?: string | null;
+          role?: Database['public']['Enums']['family_member_role'];
+          status?: Database['public']['Enums']['family_member_status'];
+          updated_at?: string;
+          user_id?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          family_id?: string;
+          id?: string;
+          invite_email?: string | null;
+          invite_expires_at?: string | null;
+          invite_token_hash?: string | null;
+          joined_at?: string | null;
+          role?: Database['public']['Enums']['family_member_role'];
+          status?: Database['public']['Enums']['family_member_status'];
+          updated_at?: string;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
       fare_quotes: {
         Row: {
           breakdown: Json;
@@ -876,6 +1484,219 @@ export type Database = {
         };
         Relationships: [];
       };
+      fee_disclosures: {
+        Row: {
+          explanation: string;
+          fee_type: string;
+          id: string;
+          locale: string;
+          title: string;
+        };
+        Insert: {
+          explanation?: string;
+          fee_type?: string;
+          id?: string;
+          locale?: string;
+          title?: string;
+        };
+        Update: {
+          explanation?: string;
+          fee_type?: string;
+          id?: string;
+          locale?: string;
+          title?: string;
+        };
+        Relationships: [];
+      };
+      fraud_case_events: {
+        Row: {
+          case_id: string;
+          created_at: string;
+          event_id: string;
+        };
+        Insert: {
+          case_id?: string;
+          created_at?: string;
+          event_id?: string;
+        };
+        Update: {
+          case_id?: string;
+          created_at?: string;
+          event_id?: string;
+        };
+        Relationships: [];
+      };
+      fraud_cases: {
+        Row: {
+          closed_at: string | null;
+          closed_by: string | null;
+          closure_notes: string | null;
+          created_at: string;
+          id: string;
+          metadata: Json;
+          opened_by: string;
+          reason: string;
+          severity: number;
+          status: Database['public']['Enums']['fraud_case_status'];
+          subject_key: string;
+          subject_kind: Database['public']['Enums']['fraud_subject_kind'];
+          updated_at: string;
+        };
+        Insert: {
+          closed_at?: string | null;
+          closed_by?: string | null;
+          closure_notes?: string | null;
+          created_at?: string;
+          id?: string;
+          metadata?: Json;
+          opened_by?: string;
+          reason?: string;
+          severity?: number;
+          status?: Database['public']['Enums']['fraud_case_status'];
+          subject_key?: string;
+          subject_kind?: Database['public']['Enums']['fraud_subject_kind'];
+          updated_at?: string;
+        };
+        Update: {
+          closed_at?: string | null;
+          closed_by?: string | null;
+          closure_notes?: string | null;
+          created_at?: string;
+          id?: string;
+          metadata?: Json;
+          opened_by?: string;
+          reason?: string;
+          severity?: number;
+          status?: Database['public']['Enums']['fraud_case_status'];
+          subject_key?: string;
+          subject_kind?: Database['public']['Enums']['fraud_subject_kind'];
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      fraud_enforcement_actions: {
+        Row: {
+          action_type: string;
+          created_at: string;
+          expired_at: string | null;
+          expires_at: string | null;
+          id: string;
+          metadata: Json;
+          reason: string;
+          resolution_notes: string | null;
+          resolved_at: string | null;
+          resolved_by: string | null;
+          severity: number;
+          subject_key: string;
+          subject_kind: Database['public']['Enums']['fraud_subject_kind'];
+          updated_at: string;
+        };
+        Insert: {
+          action_type?: string;
+          created_at?: string;
+          expired_at?: string | null;
+          expires_at?: string | null;
+          id?: string;
+          metadata?: Json;
+          reason?: string;
+          resolution_notes?: string | null;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+          severity?: number;
+          subject_key?: string;
+          subject_kind?: Database['public']['Enums']['fraud_subject_kind'];
+          updated_at?: string;
+        };
+        Update: {
+          action_type?: string;
+          created_at?: string;
+          expired_at?: string | null;
+          expires_at?: string | null;
+          id?: string;
+          metadata?: Json;
+          reason?: string;
+          resolution_notes?: string | null;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+          severity?: number;
+          subject_key?: string;
+          subject_kind?: Database['public']['Enums']['fraud_subject_kind'];
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      fraud_events: {
+        Row: {
+          created_at: string;
+          dedupe_key: string | null;
+          device_hash: string | null;
+          id: string;
+          ip_prefix: string | null;
+          metadata: Json;
+          reason: string;
+          score: number;
+          severity: number;
+          subject_key: string;
+          subject_kind: Database['public']['Enums']['fraud_subject_kind'];
+        };
+        Insert: {
+          created_at?: string;
+          dedupe_key?: string | null;
+          device_hash?: string | null;
+          id?: string;
+          ip_prefix?: string | null;
+          metadata?: Json;
+          reason?: string;
+          score?: number;
+          severity?: number;
+          subject_key?: string;
+          subject_kind?: Database['public']['Enums']['fraud_subject_kind'];
+        };
+        Update: {
+          created_at?: string;
+          dedupe_key?: string | null;
+          device_hash?: string | null;
+          id?: string;
+          ip_prefix?: string | null;
+          metadata?: Json;
+          reason?: string;
+          score?: number;
+          severity?: number;
+          subject_key?: string;
+          subject_kind?: Database['public']['Enums']['fraud_subject_kind'];
+        };
+        Relationships: [];
+      };
+      geo_cache: {
+        Row: {
+          cache_key: string | null;
+          capability: string;
+          created_at: string;
+          expires_at: string;
+          provider_code: string;
+          response_json: Json;
+          updated_at: string;
+        };
+        Insert: {
+          cache_key?: string | null;
+          capability?: string;
+          created_at?: string;
+          expires_at?: string;
+          provider_code?: string;
+          response_json?: Json;
+          updated_at?: string;
+        };
+        Update: {
+          cache_key?: string | null;
+          capability?: string;
+          created_at?: string;
+          expires_at?: string;
+          provider_code?: string;
+          response_json?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       gift_codes: {
         Row: {
           amount_iqd: number;
@@ -886,6 +1707,9 @@ export type Database = {
           redeemed_at: string | null;
           redeemed_by: string | null;
           redeemed_entry_id: number | null;
+          voided_at: string | null;
+          voided_by: string | null;
+          voided_reason: string | null;
         };
         Insert: {
           amount_iqd?: number;
@@ -896,6 +1720,9 @@ export type Database = {
           redeemed_at?: string | null;
           redeemed_by?: string | null;
           redeemed_entry_id?: number | null;
+          voided_at?: string | null;
+          voided_by?: string | null;
+          voided_reason?: string | null;
         };
         Update: {
           amount_iqd?: number;
@@ -906,6 +1733,9 @@ export type Database = {
           redeemed_at?: string | null;
           redeemed_by?: string | null;
           redeemed_entry_id?: number | null;
+          voided_at?: string | null;
+          voided_by?: string | null;
+          voided_reason?: string | null;
         };
         Relationships: [];
       };
@@ -1087,6 +1917,333 @@ export type Database = {
           role_context?: Database['public']['Enums']['party_role'] | null;
           status?: Database['public']['Enums']['kyc_submission_status'];
           submitted_at?: string | null;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      live_activity_throttle_config: {
+        Row: {
+          created_at: string;
+          id: string;
+          max_updates_per_trip: number;
+          min_interval_seconds: number;
+          platform: Database['public']['Enums']['live_activity_platform'];
+          significant_eta_change_minutes: number;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          max_updates_per_trip?: number;
+          min_interval_seconds?: number;
+          platform?: Database['public']['Enums']['live_activity_platform'];
+          significant_eta_change_minutes?: number;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          max_updates_per_trip?: number;
+          min_interval_seconds?: number;
+          platform?: Database['public']['Enums']['live_activity_platform'];
+          significant_eta_change_minutes?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      maps_provider_capabilities: {
+        Row: {
+          capability: string;
+          created_at: string;
+          enabled: boolean;
+          note: string | null;
+          provider_code: string;
+          unit_label: string;
+          updated_at: string;
+        };
+        Insert: {
+          capability?: string;
+          created_at?: string;
+          enabled?: boolean;
+          note?: string | null;
+          provider_code?: string;
+          unit_label?: string;
+          updated_at?: string;
+        };
+        Update: {
+          capability?: string;
+          created_at?: string;
+          enabled?: boolean;
+          note?: string | null;
+          provider_code?: string;
+          unit_label?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      maps_provider_health: {
+        Row: {
+          capability: string;
+          consecutive_failures: unknown;
+          disabled_until: string | null;
+          last_error_code: string | null;
+          last_failure_at: string | null;
+          last_http_status: unknown | null;
+          provider_code: string;
+          updated_at: string;
+        };
+        Insert: {
+          capability?: string;
+          consecutive_failures?: unknown;
+          disabled_until?: string | null;
+          last_error_code?: string | null;
+          last_failure_at?: string | null;
+          last_http_status?: unknown | null;
+          provider_code?: string;
+          updated_at?: string;
+        };
+        Update: {
+          capability?: string;
+          consecutive_failures?: unknown;
+          disabled_until?: string | null;
+          last_error_code?: string | null;
+          last_failure_at?: string | null;
+          last_http_status?: unknown | null;
+          provider_code?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      maps_providers: {
+        Row: {
+          created_at: string;
+          enabled: boolean;
+          language: string;
+          monthly_hard_cap_units: number | null;
+          monthly_soft_cap_units: number | null;
+          note: string | null;
+          priority: number;
+          provider_code: string | null;
+          region: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          enabled?: boolean;
+          language?: string;
+          monthly_hard_cap_units?: number | null;
+          monthly_soft_cap_units?: number | null;
+          note?: string | null;
+          priority?: number;
+          provider_code?: string | null;
+          region?: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          enabled?: boolean;
+          language?: string;
+          monthly_hard_cap_units?: number | null;
+          monthly_soft_cap_units?: number | null;
+          note?: string | null;
+          priority?: number;
+          provider_code?: string | null;
+          region?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      maps_requests_log: {
+        Row: {
+          action: string;
+          actor_user_id: string | null;
+          attempt_number: unknown;
+          billed_units: unknown;
+          cache_hit: boolean;
+          capability: string;
+          client_renderer: string | null;
+          created_at: string;
+          error_code: string | null;
+          error_detail: string | null;
+          fallback_reason: string | null;
+          http_status: unknown;
+          id: number | null;
+          latency_ms: unknown;
+          provider_code: string;
+          request_id: string;
+          request_summary: Json | null;
+          response_summary: Json | null;
+          tried_providers: string[] | null;
+        };
+        Insert: {
+          action?: string;
+          actor_user_id?: string | null;
+          attempt_number?: unknown;
+          billed_units?: unknown;
+          cache_hit?: boolean;
+          capability?: string;
+          client_renderer?: string | null;
+          created_at?: string;
+          error_code?: string | null;
+          error_detail?: string | null;
+          fallback_reason?: string | null;
+          http_status?: unknown;
+          id?: number | null;
+          latency_ms?: unknown;
+          provider_code?: string;
+          request_id?: string;
+          request_summary?: Json | null;
+          response_summary?: Json | null;
+          tried_providers?: string[] | null;
+        };
+        Update: {
+          action?: string;
+          actor_user_id?: string | null;
+          attempt_number?: unknown;
+          billed_units?: unknown;
+          cache_hit?: boolean;
+          capability?: string;
+          client_renderer?: string | null;
+          created_at?: string;
+          error_code?: string | null;
+          error_detail?: string | null;
+          fallback_reason?: string | null;
+          http_status?: unknown;
+          id?: number | null;
+          latency_ms?: unknown;
+          provider_code?: string;
+          request_id?: string;
+          request_summary?: Json | null;
+          response_summary?: Json | null;
+          tried_providers?: string[] | null;
+        };
+        Relationships: [];
+      };
+      maps_usage_daily: {
+        Row: {
+          capability: string;
+          created_at: string;
+          day: string;
+          provider_code: string;
+          units: number;
+          updated_at: string;
+        };
+        Insert: {
+          capability?: string;
+          created_at?: string;
+          day?: string;
+          provider_code?: string;
+          units?: number;
+          updated_at?: string;
+        };
+        Update: {
+          capability?: string;
+          created_at?: string;
+          day?: string;
+          provider_code?: string;
+          units?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      membership_plans: {
+        Row: {
+          available_regions: string[] | null;
+          billing_interval: string;
+          code: string;
+          created_at: string;
+          description: string | null;
+          family_sharing_slots: number | null;
+          free_delivery_min_order_iqd: number | null;
+          id: string;
+          is_active: boolean;
+          member_exclusive_promos: boolean;
+          name: string;
+          price_iqd: number;
+          service_fee_discount_pct: number | null;
+          updated_at: string;
+        };
+        Insert: {
+          available_regions?: string[] | null;
+          billing_interval?: string;
+          code?: string;
+          created_at?: string;
+          description?: string | null;
+          family_sharing_slots?: number | null;
+          free_delivery_min_order_iqd?: number | null;
+          id?: string;
+          is_active?: boolean;
+          member_exclusive_promos?: boolean;
+          name?: string;
+          price_iqd?: number;
+          service_fee_discount_pct?: number | null;
+          updated_at?: string;
+        };
+        Update: {
+          available_regions?: string[] | null;
+          billing_interval?: string;
+          code?: string;
+          created_at?: string;
+          description?: string | null;
+          family_sharing_slots?: number | null;
+          free_delivery_min_order_iqd?: number | null;
+          id?: string;
+          is_active?: boolean;
+          member_exclusive_promos?: boolean;
+          name?: string;
+          price_iqd?: number;
+          service_fee_discount_pct?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      memberships: {
+        Row: {
+          cancelled_at: string | null;
+          created_at: string;
+          expires_at: string | null;
+          id: string;
+          is_primary: boolean;
+          last_billed_at: string | null;
+          next_bill_at: string | null;
+          plan_id: string;
+          renew_at: string | null;
+          shared_from_membership_id: string | null;
+          started_at: string;
+          status: Database['public']['Enums']['membership_status'];
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          cancelled_at?: string | null;
+          created_at?: string;
+          expires_at?: string | null;
+          id?: string;
+          is_primary?: boolean;
+          last_billed_at?: string | null;
+          next_bill_at?: string | null;
+          plan_id?: string;
+          renew_at?: string | null;
+          shared_from_membership_id?: string | null;
+          started_at?: string;
+          status?: Database['public']['Enums']['membership_status'];
+          updated_at?: string;
+          user_id?: string;
+        };
+        Update: {
+          cancelled_at?: string | null;
+          created_at?: string;
+          expires_at?: string | null;
+          id?: string;
+          is_primary?: boolean;
+          last_billed_at?: string | null;
+          next_bill_at?: string | null;
+          plan_id?: string;
+          renew_at?: string | null;
+          shared_from_membership_id?: string | null;
+          started_at?: string;
+          status?: Database['public']['Enums']['membership_status'];
           updated_at?: string;
           user_id?: string;
         };
@@ -1689,6 +2846,219 @@ export type Database = {
         };
         Relationships: [];
       };
+      ops_alert_events: {
+        Row: {
+          event_type: string;
+          id: string;
+          message: string | null;
+          notified_at: string | null;
+          notified_attempts: number;
+          notified_channels: Json;
+          notified_error: string | null;
+          notify_status: string | null;
+          occurred_at: string;
+          rule_id: string;
+          value: Json;
+        };
+        Insert: {
+          event_type?: string;
+          id?: string;
+          message?: string | null;
+          notified_at?: string | null;
+          notified_attempts?: number;
+          notified_channels?: Json;
+          notified_error?: string | null;
+          notify_status?: string | null;
+          occurred_at?: string;
+          rule_id?: string;
+          value?: Json;
+        };
+        Update: {
+          event_type?: string;
+          id?: string;
+          message?: string | null;
+          notified_at?: string | null;
+          notified_attempts?: number;
+          notified_channels?: Json;
+          notified_error?: string | null;
+          notify_status?: string | null;
+          occurred_at?: string;
+          rule_id?: string;
+          value?: Json;
+        };
+        Relationships: [];
+      };
+      ops_alert_rules: {
+        Row: {
+          config: Json;
+          cooldown_minutes: number;
+          created_at: string;
+          enabled: boolean;
+          id: string;
+          kind: string;
+          name: string;
+          severity: string;
+          updated_at: string;
+          window_minutes: number;
+        };
+        Insert: {
+          config?: Json;
+          cooldown_minutes?: number;
+          created_at?: string;
+          enabled?: boolean;
+          id?: string;
+          kind?: string;
+          name?: string;
+          severity?: string;
+          updated_at?: string;
+          window_minutes?: number;
+        };
+        Update: {
+          config?: Json;
+          cooldown_minutes?: number;
+          created_at?: string;
+          enabled?: boolean;
+          id?: string;
+          kind?: string;
+          name?: string;
+          severity?: string;
+          updated_at?: string;
+          window_minutes?: number;
+        };
+        Relationships: [];
+      };
+      ops_alert_state: {
+        Row: {
+          active_since: string | null;
+          escalated_at: string | null;
+          is_active: boolean;
+          last_escalation_notified_at: string | null;
+          last_evaluated_at: string | null;
+          last_message: string | null;
+          last_resolved_at: string | null;
+          last_triggered_at: string | null;
+          last_value: Json;
+          rule_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          active_since?: string | null;
+          escalated_at?: string | null;
+          is_active?: boolean;
+          last_escalation_notified_at?: string | null;
+          last_evaluated_at?: string | null;
+          last_message?: string | null;
+          last_resolved_at?: string | null;
+          last_triggered_at?: string | null;
+          last_value?: Json;
+          rule_id?: string;
+          updated_at?: string;
+        };
+        Update: {
+          active_since?: string | null;
+          escalated_at?: string | null;
+          is_active?: boolean;
+          last_escalation_notified_at?: string | null;
+          last_evaluated_at?: string | null;
+          last_message?: string | null;
+          last_resolved_at?: string | null;
+          last_triggered_at?: string | null;
+          last_value?: Json;
+          rule_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      order_bundles: {
+        Row: {
+          additional_fee_iqd: number;
+          addon_window_expires_at: string;
+          created_at: string;
+          fee_waived: boolean;
+          id: string;
+          primary_order_id: string;
+          same_courier: boolean;
+          status: Database['public']['Enums']['order_bundle_status'];
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          additional_fee_iqd?: number;
+          addon_window_expires_at?: string;
+          created_at?: string;
+          fee_waived?: boolean;
+          id?: string;
+          primary_order_id?: string;
+          same_courier?: boolean;
+          status?: Database['public']['Enums']['order_bundle_status'];
+          updated_at?: string;
+          user_id?: string;
+        };
+        Update: {
+          additional_fee_iqd?: number;
+          addon_window_expires_at?: string;
+          created_at?: string;
+          fee_waived?: boolean;
+          id?: string;
+          primary_order_id?: string;
+          same_courier?: boolean;
+          status?: Database['public']['Enums']['order_bundle_status'];
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      orders: {
+        Row: {
+          bundle_id: string | null;
+        };
+        Insert: {
+          bundle_id?: string | null;
+        };
+        Update: {
+          bundle_id?: string | null;
+        };
+        Relationships: [];
+      };
+      passkey_auth_log: {
+        Row: {
+          created_at: string;
+          device_info: Json | null;
+          event_type: string;
+          failure_reason: string | null;
+          id: string;
+          ip_address: unknown | null;
+          passkey_id: string | null;
+          success: boolean;
+          user_agent: string | null;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          device_info?: Json | null;
+          event_type?: string;
+          failure_reason?: string | null;
+          id?: string;
+          ip_address?: unknown | null;
+          passkey_id?: string | null;
+          success?: boolean;
+          user_agent?: string | null;
+          user_id?: string;
+        };
+        Update: {
+          created_at?: string;
+          device_info?: Json | null;
+          event_type?: string;
+          failure_reason?: string | null;
+          id?: string;
+          ip_address?: unknown | null;
+          passkey_id?: string | null;
+          success?: boolean;
+          user_agent?: string | null;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       payment_intents: {
         Row: {
           amount_iqd: number;
@@ -1772,6 +3142,39 @@ export type Database = {
           kind?: Database['public']['Enums']['payment_provider_kind'];
           name?: string;
           sort_order?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      payment_refund_idempotency: {
+        Row: {
+          actor_id: string | null;
+          created_at: string;
+          key: string | null;
+          params_hash: string;
+          payment_id: string | null;
+          response: Json | null;
+          ride_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          actor_id?: string | null;
+          created_at?: string;
+          key?: string | null;
+          params_hash?: string;
+          payment_id?: string | null;
+          response?: Json | null;
+          ride_id?: string;
+          updated_at?: string;
+        };
+        Update: {
+          actor_id?: string | null;
+          created_at?: string;
+          key?: string | null;
+          params_hash?: string;
+          payment_id?: string | null;
+          response?: Json | null;
+          ride_id?: string;
           updated_at?: string;
         };
         Relationships: [];
@@ -2058,6 +3461,75 @@ export type Database = {
         };
         Relationships: [];
       };
+      pricing_rules: {
+        Row: {
+          code: string;
+          created_at: string;
+          delivery_fee_iqd: number | null;
+          delivery_fee_waived: boolean;
+          description: string | null;
+          environment: string | null;
+          id: string;
+          is_active: boolean;
+          max_subtotal_iqd: number | null;
+          membership_plan_codes: string[] | null;
+          min_subtotal_iqd: number | null;
+          name: string;
+          priority: number;
+          regions: string[] | null;
+          requires_membership: boolean;
+          service_fee_pct: number | null;
+          small_order_fee_iqd: number | null;
+          updated_at: string;
+          valid_from: string | null;
+          valid_until: string | null;
+        };
+        Insert: {
+          code?: string;
+          created_at?: string;
+          delivery_fee_iqd?: number | null;
+          delivery_fee_waived?: boolean;
+          description?: string | null;
+          environment?: string | null;
+          id?: string;
+          is_active?: boolean;
+          max_subtotal_iqd?: number | null;
+          membership_plan_codes?: string[] | null;
+          min_subtotal_iqd?: number | null;
+          name?: string;
+          priority?: number;
+          regions?: string[] | null;
+          requires_membership?: boolean;
+          service_fee_pct?: number | null;
+          small_order_fee_iqd?: number | null;
+          updated_at?: string;
+          valid_from?: string | null;
+          valid_until?: string | null;
+        };
+        Update: {
+          code?: string;
+          created_at?: string;
+          delivery_fee_iqd?: number | null;
+          delivery_fee_waived?: boolean;
+          description?: string | null;
+          environment?: string | null;
+          id?: string;
+          is_active?: boolean;
+          max_subtotal_iqd?: number | null;
+          membership_plan_codes?: string[] | null;
+          min_subtotal_iqd?: number | null;
+          name?: string;
+          priority?: number;
+          regions?: string[] | null;
+          requires_membership?: boolean;
+          service_fee_pct?: number | null;
+          small_order_fee_iqd?: number | null;
+          updated_at?: string;
+          valid_from?: string | null;
+          valid_until?: string | null;
+        };
+        Relationships: [];
+      };
       profile_kyc: {
         Row: {
           note: string | null;
@@ -2202,6 +3674,33 @@ export type Database = {
           rating_avg?: number;
           rating_count?: number;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      recovery_codes: {
+        Row: {
+          batch_id: string;
+          code_hash: string;
+          created_at: string;
+          id: string;
+          used_at: string | null;
+          user_id: string;
+        };
+        Insert: {
+          batch_id?: string;
+          code_hash?: string;
+          created_at?: string;
+          id?: string;
+          used_at?: string | null;
+          user_id?: string;
+        };
+        Update: {
+          batch_id?: string;
+          code_hash?: string;
+          created_at?: string;
+          id?: string;
+          used_at?: string | null;
+          user_id?: string;
         };
         Relationships: [];
       };
@@ -2408,9 +3907,9 @@ export type Database = {
           id: string;
           last_read_at: string | null;
           last_read_message_id: string | null;
-          message_id: string;
+          message_id: string | null;
           read_at: string;
-          reader_id: string;
+          reader_id: string | null;
           ride_id: string;
           thread_id: string | null;
           updated_at: string | null;
@@ -2420,9 +3919,9 @@ export type Database = {
           id?: string;
           last_read_at?: string | null;
           last_read_message_id?: string | null;
-          message_id?: string;
+          message_id?: string | null;
           read_at?: string;
-          reader_id?: string;
+          reader_id?: string | null;
           ride_id?: string;
           thread_id?: string | null;
           updated_at?: string | null;
@@ -2432,9 +3931,9 @@ export type Database = {
           id?: string;
           last_read_at?: string | null;
           last_read_message_id?: string | null;
-          message_id?: string;
+          message_id?: string | null;
           read_at?: string;
-          reader_id?: string;
+          reader_id?: string | null;
           ride_id?: string;
           thread_id?: string | null;
           updated_at?: string | null;
@@ -2804,6 +4303,10 @@ export type Database = {
           service_area_id: string | null;
           status: Database['public']['Enums']['ride_request_status'];
           updated_at: string;
+          women_preferences_fallback_used: boolean;
+          women_preferences_fulfilled: boolean;
+          women_preferences_match_attempt_ms: number | null;
+          women_preferences_requested: boolean;
         };
         Insert: {
           accepted_at?: string | null;
@@ -2833,6 +4336,10 @@ export type Database = {
           service_area_id?: string | null;
           status?: Database['public']['Enums']['ride_request_status'];
           updated_at?: string;
+          women_preferences_fallback_used?: boolean;
+          women_preferences_fulfilled?: boolean;
+          women_preferences_match_attempt_ms?: number | null;
+          women_preferences_requested?: boolean;
         };
         Update: {
           accepted_at?: string | null;
@@ -2862,6 +4369,10 @@ export type Database = {
           service_area_id?: string | null;
           status?: Database['public']['Enums']['ride_request_status'];
           updated_at?: string;
+          women_preferences_fallback_used?: boolean;
+          women_preferences_fulfilled?: boolean;
+          women_preferences_match_attempt_ms?: number | null;
+          women_preferences_requested?: boolean;
         };
         Relationships: [];
       };
@@ -3054,6 +4565,87 @@ export type Database = {
         };
         Relationships: [];
       };
+      safety_mismatch_reports: {
+        Row: {
+          created_at: string;
+          description: string | null;
+          evidence_urls: string[] | null;
+          id: string;
+          report_type: string;
+          reported_user_id: string;
+          reporter_id: string;
+          review_notes: string | null;
+          review_outcome: string | null;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+          ride_id: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          description?: string | null;
+          evidence_urls?: string[] | null;
+          id?: string;
+          report_type?: string;
+          reported_user_id?: string;
+          reporter_id?: string;
+          review_notes?: string | null;
+          review_outcome?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          ride_id?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          description?: string | null;
+          evidence_urls?: string[] | null;
+          id?: string;
+          report_type?: string;
+          reported_user_id?: string;
+          reporter_id?: string;
+          review_notes?: string | null;
+          review_outcome?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          ride_id?: string | null;
+        };
+        Relationships: [];
+      };
+      safety_preferences: {
+        Row: {
+          created_at: string;
+          gender_identity: Database['public']['Enums']['gender_identity'];
+          gender_visibility: Database['public']['Enums']['gender_visibility'];
+          is_teen: boolean;
+          updated_at: string;
+          user_id: string;
+          women_preferences_driver_opt_in: boolean;
+          women_preferences_eligible: boolean;
+          women_preferences_enabled: boolean;
+        };
+        Insert: {
+          created_at?: string;
+          gender_identity?: Database['public']['Enums']['gender_identity'];
+          gender_visibility?: Database['public']['Enums']['gender_visibility'];
+          is_teen?: boolean;
+          updated_at?: string;
+          user_id?: string;
+          women_preferences_driver_opt_in?: boolean;
+          women_preferences_eligible?: boolean;
+          women_preferences_enabled?: boolean;
+        };
+        Update: {
+          created_at?: string;
+          gender_identity?: Database['public']['Enums']['gender_identity'];
+          gender_visibility?: Database['public']['Enums']['gender_visibility'];
+          is_teen?: boolean;
+          updated_at?: string;
+          user_id?: string;
+          women_preferences_driver_opt_in?: boolean;
+          women_preferences_eligible?: boolean;
+          women_preferences_enabled?: boolean;
+        };
+        Relationships: [];
+      };
       scheduled_rides: {
         Row: {
           cancelled_at: string | null;
@@ -3147,6 +4739,7 @@ export type Database = {
           match_radius_m: number;
           min_base_fare_iqd: number | null;
           name: string;
+          notes: string | null;
           pricing_config_id: string | null;
           priority: number;
           surge_multiplier: number;
@@ -3164,6 +4757,7 @@ export type Database = {
           match_radius_m?: number;
           min_base_fare_iqd?: number | null;
           name?: string;
+          notes?: string | null;
           pricing_config_id?: string | null;
           priority?: number;
           surge_multiplier?: number;
@@ -3181,6 +4775,7 @@ export type Database = {
           match_radius_m?: number;
           min_base_fare_iqd?: number | null;
           name?: string;
+          notes?: string | null;
           pricing_config_id?: string | null;
           priority?: number;
           surge_multiplier?: number;
@@ -3444,6 +5039,36 @@ export type Database = {
         };
         Relationships: [];
       };
+      shift_progress: {
+        Row: {
+          avg_rating: number | null;
+          created_at: string;
+          earnings_iqd: number;
+          id: string;
+          online_minutes: number;
+          shift_id: string;
+          trips_completed: number;
+        };
+        Insert: {
+          avg_rating?: number | null;
+          created_at?: string;
+          earnings_iqd?: number;
+          id?: string;
+          online_minutes?: number;
+          shift_id?: string;
+          trips_completed?: number;
+        };
+        Update: {
+          avg_rating?: number | null;
+          created_at?: string;
+          earnings_iqd?: number;
+          id?: string;
+          online_minutes?: number;
+          shift_id?: string;
+          trips_completed?: number;
+        };
+        Relationships: [];
+      };
       sos_events: {
         Row: {
           created_at: string;
@@ -3552,6 +5177,30 @@ export type Database = {
           key?: string | null;
           sort_order?: number;
           title?: string;
+        };
+        Relationships: [];
+      };
+      support_internal_notes: {
+        Row: {
+          author_id: string;
+          created_at: string;
+          id: string | null;
+          note: string;
+          ticket_id: string;
+        };
+        Insert: {
+          author_id?: string;
+          created_at?: string;
+          id?: string | null;
+          note?: string;
+          ticket_id?: string;
+        };
+        Update: {
+          author_id?: string;
+          created_at?: string;
+          id?: string | null;
+          note?: string;
+          ticket_id?: string;
         };
         Relationships: [];
       };
@@ -3669,6 +5318,45 @@ export type Database = {
         };
         Relationships: [];
       };
+      teen_policies: {
+        Row: {
+          allowed_hours: Json | null;
+          created_at: string;
+          destination_lock_enabled: boolean;
+          family_id: string;
+          geofence_allowlist: Json | null;
+          id: string;
+          pickup_pin_enabled: boolean;
+          spend_cap_daily: number | null;
+          teen_user_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          allowed_hours?: Json | null;
+          created_at?: string;
+          destination_lock_enabled?: boolean;
+          family_id?: string;
+          geofence_allowlist?: Json | null;
+          id?: string;
+          pickup_pin_enabled?: boolean;
+          spend_cap_daily?: number | null;
+          teen_user_id?: string;
+          updated_at?: string;
+        };
+        Update: {
+          allowed_hours?: Json | null;
+          created_at?: string;
+          destination_lock_enabled?: boolean;
+          family_id?: string;
+          geofence_allowlist?: Json | null;
+          id?: string;
+          pickup_pin_enabled?: boolean;
+          spend_cap_daily?: number | null;
+          teen_user_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       topup_intents: {
         Row: {
           amount_iqd: number;
@@ -3753,6 +5441,75 @@ export type Database = {
         };
         Relationships: [];
       };
+      trip_guardian_links: {
+        Row: {
+          created_at: string;
+          guardian_live_tracking_enabled: boolean;
+          guardian_user_id: string;
+          id: string;
+          teen_user_id: string;
+          trip_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          guardian_live_tracking_enabled?: boolean;
+          guardian_user_id?: string;
+          id?: string;
+          teen_user_id?: string;
+          trip_id?: string;
+        };
+        Update: {
+          created_at?: string;
+          guardian_live_tracking_enabled?: boolean;
+          guardian_user_id?: string;
+          id?: string;
+          teen_user_id?: string;
+          trip_id?: string;
+        };
+        Relationships: [];
+      };
+      trip_live_activities: {
+        Row: {
+          created_at: string;
+          id: string;
+          last_pushed_at: string | null;
+          platform: Database['public']['Enums']['live_activity_platform'];
+          push_count: number;
+          revoked_at: string | null;
+          show_full_addresses: boolean;
+          token: string;
+          trip_id: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          last_pushed_at?: string | null;
+          platform?: Database['public']['Enums']['live_activity_platform'];
+          push_count?: number;
+          revoked_at?: string | null;
+          show_full_addresses?: boolean;
+          token?: string;
+          trip_id?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          last_pushed_at?: string | null;
+          platform?: Database['public']['Enums']['live_activity_platform'];
+          push_count?: number;
+          revoked_at?: string | null;
+          show_full_addresses?: boolean;
+          token?: string;
+          trip_id?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       trip_share_tokens: {
         Row: {
           created_at: string;
@@ -3783,6 +5540,42 @@ export type Database = {
           ride_id?: string;
           token?: string | null;
           token_hash?: string | null;
+        };
+        Relationships: [];
+      };
+      trip_status_transitions: {
+        Row: {
+          broadcast_at: string | null;
+          broadcast_sent: boolean;
+          created_at: string;
+          distance_remaining_m: number | null;
+          eta_minutes: number | null;
+          id: string;
+          new_status: string;
+          old_status: string | null;
+          trip_id: string;
+        };
+        Insert: {
+          broadcast_at?: string | null;
+          broadcast_sent?: boolean;
+          created_at?: string;
+          distance_remaining_m?: number | null;
+          eta_minutes?: number | null;
+          id?: string;
+          new_status?: string;
+          old_status?: string | null;
+          trip_id?: string;
+        };
+        Update: {
+          broadcast_at?: string | null;
+          broadcast_sent?: boolean;
+          created_at?: string;
+          distance_remaining_m?: number | null;
+          eta_minutes?: number | null;
+          id?: string;
+          new_status?: string;
+          old_status?: string | null;
+          trip_id?: string;
         };
         Relationships: [];
       };
@@ -4026,6 +5819,78 @@ export type Database = {
           read_at?: string | null;
           title?: string;
           user_id?: string;
+        };
+        Relationships: [];
+      };
+      user_passkeys: {
+        Row: {
+          aaguid: unknown | null;
+          backup_eligible: boolean;
+          backup_state: boolean;
+          created_at: string;
+          credential_id: unknown;
+          device_type: string | null;
+          friendly_name: string | null;
+          id: string;
+          last_used_at: string | null;
+          passkey_type: Database['public']['Enums']['passkey_type'];
+          public_key: unknown;
+          revoked_at: string | null;
+          revoked_reason: string | null;
+          sign_count: number;
+          status: Database['public']['Enums']['passkey_status'];
+          transports: string[] | null;
+          updated_at: string;
+          use_count: number;
+          user_agent: string | null;
+          user_id: string;
+          webauthn_device_type: string | null;
+        };
+        Insert: {
+          aaguid?: unknown | null;
+          backup_eligible?: boolean;
+          backup_state?: boolean;
+          created_at?: string;
+          credential_id?: unknown;
+          device_type?: string | null;
+          friendly_name?: string | null;
+          id?: string;
+          last_used_at?: string | null;
+          passkey_type?: Database['public']['Enums']['passkey_type'];
+          public_key?: unknown;
+          revoked_at?: string | null;
+          revoked_reason?: string | null;
+          sign_count?: number;
+          status?: Database['public']['Enums']['passkey_status'];
+          transports?: string[] | null;
+          updated_at?: string;
+          use_count?: number;
+          user_agent?: string | null;
+          user_id?: string;
+          webauthn_device_type?: string | null;
+        };
+        Update: {
+          aaguid?: unknown | null;
+          backup_eligible?: boolean;
+          backup_state?: boolean;
+          created_at?: string;
+          credential_id?: unknown;
+          device_type?: string | null;
+          friendly_name?: string | null;
+          id?: string;
+          last_used_at?: string | null;
+          passkey_type?: Database['public']['Enums']['passkey_type'];
+          public_key?: unknown;
+          revoked_at?: string | null;
+          revoked_reason?: string | null;
+          sign_count?: number;
+          status?: Database['public']['Enums']['passkey_status'];
+          transports?: string[] | null;
+          updated_at?: string;
+          use_count?: number;
+          user_agent?: string | null;
+          user_id?: string;
+          webauthn_device_type?: string | null;
         };
         Relationships: [];
       };
@@ -4455,8 +6320,136 @@ export type Database = {
         };
         Relationships: [];
       };
+      webauthn_challenges: {
+        Row: {
+          challenge: unknown;
+          challenge_type: string;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          session_id: string | null;
+          used_at: string | null;
+          user_agent: string | null;
+          user_id: string | null;
+        };
+        Insert: {
+          challenge?: unknown;
+          challenge_type?: string;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          session_id?: string | null;
+          used_at?: string | null;
+          user_agent?: string | null;
+          user_id?: string | null;
+        };
+        Update: {
+          challenge?: unknown;
+          challenge_type?: string;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          session_id?: string | null;
+          used_at?: string | null;
+          user_agent?: string | null;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
+      webhook_job_attempts: {
+        Row: {
+          attempt_no: number;
+          created_at: string;
+          error_message: string | null;
+          id: string;
+          job_id: string;
+          status: string;
+        };
+        Insert: {
+          attempt_no?: number;
+          created_at?: string;
+          error_message?: string | null;
+          id?: string;
+          job_id?: string;
+          status?: string;
+        };
+        Update: {
+          attempt_no?: number;
+          created_at?: string;
+          error_message?: string | null;
+          id?: string;
+          job_id?: string;
+          status?: string;
+        };
+        Relationships: [];
+      };
+      webhook_jobs: {
+        Row: {
+          attempt_count: number;
+          correlation_id: string | null;
+          created_at: string;
+          dedupe_key: string;
+          id: string;
+          job_kind: string;
+          last_attempt_at: string | null;
+          last_error: string | null;
+          lock_token: string | null;
+          locked_at: string | null;
+          max_attempts: number;
+          next_attempt_at: string;
+          provider_code: string;
+          provider_event_id: string;
+          provider_event_pk: number | null;
+          status: Database['public']['Enums']['webhook_job_status'];
+          updated_at: string;
+        };
+        Insert: {
+          attempt_count?: number;
+          correlation_id?: string | null;
+          created_at?: string;
+          dedupe_key?: string;
+          id?: string;
+          job_kind?: string;
+          last_attempt_at?: string | null;
+          last_error?: string | null;
+          lock_token?: string | null;
+          locked_at?: string | null;
+          max_attempts?: number;
+          next_attempt_at?: string;
+          provider_code?: string;
+          provider_event_id?: string;
+          provider_event_pk?: number | null;
+          status?: Database['public']['Enums']['webhook_job_status'];
+          updated_at?: string;
+        };
+        Update: {
+          attempt_count?: number;
+          correlation_id?: string | null;
+          created_at?: string;
+          dedupe_key?: string;
+          id?: string;
+          job_kind?: string;
+          last_attempt_at?: string | null;
+          last_error?: string | null;
+          lock_token?: string | null;
+          locked_at?: string | null;
+          max_attempts?: number;
+          next_attempt_at?: string;
+          provider_code?: string;
+          provider_event_id?: string;
+          provider_event_pk?: number | null;
+          status?: Database['public']['Enums']['webhook_job_status'];
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
+      _admin_require_role_v1: {
+        Args: {
+        };
+        Returns: undefined;
+      };
       _edge_webhook_post: {
         Args: {
           p_function_name: string;
@@ -4464,6 +6457,21 @@ export type Database = {
           p_secret_name: string;
         };
         Returns: number;
+      };
+      _fraud_require_service_role: {
+        Args: {
+        };
+        Returns: undefined;
+      };
+      _rbac_sync_on_admin_users_delete: {
+        Args: {
+        };
+        Returns: unknown;
+      };
+      _rbac_sync_on_admin_users_insert: {
+        Args: {
+        };
+        Returns: unknown;
       };
       _vault_secret: {
         Args: {
@@ -4476,6 +6484,13 @@ export type Database = {
           p_key: string;
         };
         Returns: unknown;
+      };
+      admin_approve_role_change_request_v1: {
+        Args: {
+          p_note: string;
+          p_request_id: string;
+        };
+        Returns: Json;
       };
       admin_cash_agent_create_v1: {
         Args: {
@@ -4542,6 +6557,14 @@ export type Database = {
         };
         Returns: unknown;
       };
+      admin_create_role_change_request_v1: {
+        Args: {
+          p_note: string;
+          p_role_keys: string[];
+          p_user: string;
+        };
+        Returns: Json;
+      };
       admin_create_service_area_bbox: {
         Args: {
           p_governorate: string;
@@ -4592,12 +6615,160 @@ export type Database = {
         };
         Returns: string;
       };
+      admin_generate_gift_codes_v1: {
+        Args: {
+          p_amount_iqd: number;
+          p_count: number;
+          p_length: number;
+          p_memo: string;
+          p_prefix: string;
+        };
+        Returns: unknown;
+      };
+      admin_gift_codes_list_v1: {
+        Args: {
+          p_limit: number;
+          p_offset: number;
+          p_q: string;
+          p_status: string;
+        };
+        Returns: unknown;
+      };
       admin_grant_user: {
         Args: {
           p_note: string;
           p_user: string;
         };
         Returns: undefined;
+      };
+      admin_grant_user_v1: {
+        Args: {
+          p_note: string;
+          p_user: string;
+        };
+        Returns: Json;
+      };
+      admin_has_permission: {
+        Args: {
+          p_permission: string;
+        };
+        Returns: boolean;
+      };
+      admin_list_admin_access_v1: {
+        Args: {
+          p_limit: number;
+          p_offset: number;
+          p_q: string;
+        };
+        Returns: unknown;
+      };
+      admin_list_role_change_requests_v1: {
+        Args: {
+          p_limit: number;
+          p_offset: number;
+          p_status: string;
+        };
+        Returns: unknown;
+      };
+      admin_list_role_change_requests_v2: {
+        Args: {
+          p_limit: number;
+          p_offset: number;
+          p_status: string;
+          p_ttl_days: number;
+        };
+        Returns: unknown;
+      };
+      admin_list_roles_v1: {
+        Args: {
+        };
+        Returns: unknown;
+      };
+      admin_maps_provider_capability_list_v1: {
+        Args: {
+        };
+        Returns: unknown;
+      };
+      admin_maps_provider_capability_set_v1: {
+        Args: {
+          p_capability: string;
+          p_enabled: boolean;
+          p_note: string;
+          p_provider_code: string;
+          p_unit_label: string;
+        };
+        Returns: undefined;
+      };
+      admin_maps_provider_health_list_v1: {
+        Args: {
+        };
+        Returns: unknown;
+      };
+      admin_maps_provider_health_reset_v1: {
+        Args: {
+          p_capability: string;
+          p_provider_code: string;
+        };
+        Returns: undefined;
+      };
+      admin_maps_provider_list_v1: {
+        Args: {
+        };
+        Returns: unknown;
+      };
+      admin_maps_provider_list_v2: {
+        Args: {
+        };
+        Returns: unknown;
+      };
+      admin_maps_provider_set_v1: {
+        Args: {
+          p_enabled: boolean;
+          p_language: string;
+          p_monthly_hard_cap_units: number;
+          p_monthly_soft_cap_units: number;
+          p_note: string;
+          p_priority: number;
+          p_provider_code: string;
+          p_region: string;
+        };
+        Returns: undefined;
+      };
+      admin_maps_provider_set_v2: {
+        Args: {
+          p_cache_enabled: boolean;
+          p_cache_ttl_seconds: number;
+          p_enabled: boolean;
+          p_language: string;
+          p_monthly_hard_cap_units: number;
+          p_monthly_soft_cap_units: number;
+          p_note: string;
+          p_priority: number;
+          p_provider_code: string;
+          p_region: string;
+        };
+        Returns: undefined;
+      };
+      admin_maps_requests_list_v1: {
+        Args: {
+          p_capability: string;
+          p_limit: unknown;
+          p_provider_code: string;
+        };
+        Returns: unknown;
+      };
+      admin_maps_requests_list_v2: {
+        Args: {
+          p_capability: string;
+          p_limit: unknown;
+          p_provider_code: string;
+        };
+        Returns: unknown;
+      };
+      admin_maps_requests_stats_v1: {
+        Args: {
+        };
+        Returns: unknown;
       };
       admin_mark_stale_drivers_offline: {
         Args: {
@@ -4650,6 +6821,64 @@ export type Database = {
         };
         Returns: undefined;
       };
+      admin_merchant_get_v1: {
+        Args: {
+          p_merchant_id: string;
+        };
+        Returns: Json;
+      };
+      admin_merchant_promotions_list_v1: {
+        Args: {
+          p_limit: number;
+          p_offset: number;
+          p_only_active: boolean;
+          p_q: string;
+        };
+        Returns: unknown;
+      };
+      admin_merchants_list_v1: {
+        Args: {
+          p_limit: number;
+          p_offset: number;
+          p_q: string;
+          p_status: string;
+        };
+        Returns: unknown;
+      };
+      admin_my_roles: {
+        Args: {
+        };
+        Returns: string[];
+      };
+      admin_order_get_v1: {
+        Args: {
+          p_order_id: string;
+        };
+        Returns: Json;
+      };
+      admin_order_set_status_v1: {
+        Args: {
+          p_new_status: Database['public']['Enums']['merchant_order_status'];
+          p_note: string;
+          p_order_id: string;
+        };
+        Returns: unknown;
+      };
+      admin_orders_list_v1: {
+        Args: {
+          p_limit: number;
+          p_merchant_id: string;
+          p_offset: number;
+          p_q: string;
+          p_status: string;
+        };
+        Returns: unknown;
+      };
+      admin_permissions: {
+        Args: {
+        };
+        Returns: string[];
+      };
       admin_platform_fee_list_v1: {
         Args: {
           p_only_active: boolean;
@@ -4680,6 +6909,27 @@ export type Database = {
         };
         Returns: Json;
       };
+      admin_record_ride_refund_v2: {
+        Args: {
+          p_idempotency_key: string;
+          p_reason: string;
+          p_refund_amount_iqd: number;
+          p_ride_id: string;
+        };
+        Returns: Json;
+      };
+      admin_referral_campaigns_list_v1: {
+        Args: {
+        };
+        Returns: unknown;
+      };
+      admin_reject_role_change_request_v1: {
+        Args: {
+          p_note: string;
+          p_request_id: string;
+        };
+        Returns: Json;
+      };
       admin_release_stuck_reserved_drivers: {
         Args: {
           p_limit: number;
@@ -4693,6 +6943,13 @@ export type Database = {
           p_user: string;
         };
         Returns: undefined;
+      };
+      admin_revoke_user_v1: {
+        Args: {
+          p_note: string;
+          p_user: string;
+        };
+        Returns: Json;
       };
       admin_ridecheck_escalate: {
         Args: {
@@ -4708,11 +6965,64 @@ export type Database = {
         };
         Returns: boolean;
       };
+      admin_role_keys_have_permission: {
+        Args: {
+          p_permission: string;
+          p_role_keys: string[];
+        };
+        Returns: boolean;
+      };
+      admin_service_area_delete_v1: {
+        Args: {
+          p_id: string;
+        };
+        Returns: undefined;
+      };
+      admin_service_area_get_v1: {
+        Args: {
+          p_id: string;
+        };
+        Returns: unknown;
+      };
+      admin_service_area_upsert_v1: {
+        Args: {
+          p_cash_rounding_step_iqd: number;
+          p_driver_loc_stale_after_seconds: number;
+          p_geojson: Json;
+          p_governorate: string;
+          p_id: string;
+          p_is_active: boolean;
+          p_match_radius_m: number;
+          p_min_base_fare_iqd: number;
+          p_name: string;
+          p_pricing_config_id: string;
+          p_priority: number;
+          p_surge_multiplier: number;
+          p_surge_reason: string;
+        };
+        Returns: string;
+      };
+      admin_service_areas_list_v1: {
+        Args: {
+          p_limit: number;
+          p_offset: number;
+          p_q: string;
+        };
+        Returns: unknown;
+      };
       admin_set_default_pricing_config_v1: {
         Args: {
           p_id: string;
         };
         Returns: undefined;
+      };
+      admin_set_merchant_promotion_active_v1: {
+        Args: {
+          p_id: string;
+          p_is_active: boolean;
+          p_note: string;
+        };
+        Returns: unknown;
       };
       admin_set_merchant_status: {
         Args: {
@@ -4721,6 +7031,22 @@ export type Database = {
           p_status: Database['public']['Enums']['merchant_status'];
         };
         Returns: unknown;
+      };
+      admin_set_merchant_status_v1: {
+        Args: {
+          p_merchant_id: string;
+          p_new_status: Database['public']['Enums']['merchant_status'];
+          p_note: string;
+        };
+        Returns: unknown;
+      };
+      admin_set_user_roles_v1: {
+        Args: {
+          p_note: string;
+          p_role_keys: string[];
+          p_user: string;
+        };
+        Returns: Json;
       };
       admin_settlement_approve_payment_request_v1: {
         Args: {
@@ -4857,12 +7183,121 @@ export type Database = {
         };
         Returns: unknown;
       };
+      admin_support_article_get_v1: {
+        Args: {
+          p_id: string;
+        };
+        Returns: Json;
+      };
+      admin_support_article_upsert_v1: {
+        Args: {
+          p_body_md: string;
+          p_enabled: boolean;
+          p_id: string;
+          p_section_id: string;
+          p_slug: string;
+          p_summary: string;
+          p_tags: string[];
+          p_title: string;
+        };
+        Returns: Json;
+      };
+      admin_support_articles_list_v1: {
+        Args: {
+          p_enabled: boolean;
+          p_limit: number;
+          p_offset: number;
+          p_q: string;
+          p_section_id: string;
+        };
+        Returns: unknown;
+      };
+      admin_support_section_upsert_v1: {
+        Args: {
+          p_enabled: boolean;
+          p_id: string;
+          p_key: string;
+          p_sort_order: number;
+          p_title: string;
+        };
+        Returns: Json;
+      };
+      admin_support_sections_list_v1: {
+        Args: {
+        };
+        Returns: unknown;
+      };
+      admin_support_ticket_add_internal_note_v1: {
+        Args: {
+          p_note: string;
+          p_ticket_id: string;
+        };
+        Returns: Json;
+      };
+      admin_support_ticket_assign_v1: {
+        Args: {
+          p_assigned_to: string;
+          p_note: string;
+          p_ticket_id: string;
+        };
+        Returns: Json;
+      };
+      admin_support_ticket_get_v1: {
+        Args: {
+          p_ticket_id: string;
+        };
+        Returns: Json;
+      };
+      admin_support_ticket_post_message_v1: {
+        Args: {
+          p_attachments: Json;
+          p_message: string;
+          p_ticket_id: string;
+        };
+        Returns: Json;
+      };
+      admin_support_ticket_set_status_v1: {
+        Args: {
+          p_note: string;
+          p_status: Database['public']['Enums']['support_ticket_status'];
+          p_ticket_id: string;
+        };
+        Returns: Json;
+      };
+      admin_support_tickets_list_v1: {
+        Args: {
+          p_assigned_to: string;
+          p_limit: number;
+          p_offset: number;
+          p_priority: string;
+          p_q: string;
+          p_status: string;
+        };
+        Returns: unknown;
+      };
+      admin_throttle_action_v1: {
+        Args: {
+          p_action_key: string;
+          p_limit: number;
+          p_window_seconds: number;
+        };
+        Returns: undefined;
+      };
       admin_update_pricing_config_caps: {
         Args: {
           p_id: string;
           p_max_surge_multiplier: number;
         };
         Returns: undefined;
+      };
+      admin_update_referral_campaign_v1: {
+        Args: {
+          p_active: boolean;
+          p_key: string;
+          p_referred_reward_iqd: number;
+          p_referrer_reward_iqd: number;
+        };
+        Returns: unknown;
       };
       admin_update_ride_incident: {
         Args: {
@@ -4887,6 +7322,13 @@ export type Database = {
           p_surge_reason: string;
         };
         Returns: string;
+      };
+      admin_void_gift_code_v1: {
+        Args: {
+          p_code: string;
+          p_reason: string;
+        };
+        Returns: unknown;
       };
       admin_wallet_integrity_snapshot: {
         Args: {
@@ -4935,6 +7377,12 @@ export type Database = {
         };
         Returns: Json;
       };
+      check_destination_lock: {
+        Args: {
+          p_rider_id: string;
+        };
+        Returns: boolean;
+      };
       create_receipt_from_payment: {
         Args: {
         };
@@ -4961,6 +7409,12 @@ export type Database = {
         };
         Returns: unknown;
       };
+      dispatch_accept_ride_user: {
+        Args: {
+          p_request_id: string;
+        };
+        Returns: unknown;
+      };
       dispatch_match_ride: {
         Args: {
           p_limit_n: number;
@@ -4968,6 +7422,16 @@ export type Database = {
           p_radius_m: number;
           p_request_id: string;
           p_rider_id: string;
+          p_stale_after_seconds: number;
+        };
+        Returns: unknown;
+      };
+      dispatch_match_ride_user: {
+        Args: {
+          p_limit_n: number;
+          p_match_ttl_seconds: number;
+          p_radius_m: number;
+          p_request_id: string;
           p_stale_after_seconds: number;
         };
         Returns: unknown;
@@ -4992,6 +7456,17 @@ export type Database = {
           p_day: string;
         };
         Returns: undefined;
+      };
+      driver_location_upsert_user_v1: {
+        Args: {
+          p_accuracy_m: number;
+          p_heading: number;
+          p_lat: number;
+          p_lng: number;
+          p_speed_mps: number;
+          p_vehicle_type: string;
+        };
+        Returns: Json;
       };
       driver_settlement_get_my_account_v1: {
         Args: {
@@ -5064,10 +7539,47 @@ export type Database = {
         };
         Returns: unknown;
       };
+      drivers_nearby_user_v1: {
+        Args: {
+          p_limit_n: number;
+          p_pickup_lat: number;
+          p_pickup_lng: number;
+          p_radius_m: number;
+          p_request_id: string;
+          p_required_capacity: number;
+          p_stale_after_s: number;
+        };
+        Returns: Json;
+      };
       drivers_prevent_available_with_active_match: {
         Args: {
         };
         Returns: unknown;
+      };
+      edge_webhook_outbox_claim: {
+        Args: {
+          p_limit: number;
+          p_lock_id: string;
+        };
+        Returns: unknown;
+      };
+      edge_webhook_outbox_mark: {
+        Args: {
+          p_error: string;
+          p_http_status: number;
+          p_lock_id: string;
+          p_outbox_id: number;
+          p_retry_seconds: number;
+          p_status: string;
+        };
+        Returns: undefined;
+      };
+      edge_webhook_outbox_prune: {
+        Args: {
+          p_batch: number;
+          p_max_age_days: number;
+        };
+        Returns: number;
       };
       enqueue_notification_outbox: {
         Args: {
@@ -5091,6 +7603,164 @@ export type Database = {
         };
         Returns: number;
       };
+      family_accept_invite: {
+        Args: {
+          p_invite_token: string;
+        };
+        Returns: unknown;
+      };
+      family_create: {
+        Args: {
+          p_name: string;
+        };
+        Returns: unknown;
+      };
+      family_invite_teen: {
+        Args: {
+          p_family_id: string;
+          p_invite_email: string;
+          p_invite_token: string;
+        };
+        Returns: unknown;
+      };
+      family_update_policy: {
+        Args: {
+          p_allowed_hours: Json;
+          p_destination_lock_enabled: boolean;
+          p_family_id: string;
+          p_geofence_allowlist: Json;
+          p_pickup_pin_enabled: boolean;
+          p_spend_cap_daily: number;
+          p_teen_user_id: string;
+        };
+        Returns: unknown;
+      };
+      fraud_attach_event_to_case: {
+        Args: {
+          p_case_id: string;
+          p_event_id: string;
+        };
+        Returns: undefined;
+      };
+      fraud_close_case: {
+        Args: {
+          p_case_id: string;
+          p_closed_by: string;
+          p_notes: string;
+        };
+        Returns: undefined;
+      };
+      fraud_enforce_action: {
+        Args: {
+          p_action_type: string;
+          p_expires_at: string;
+          p_metadata: Json;
+          p_reason: string;
+          p_severity: number;
+          p_subject_key: string;
+          p_subject_kind: Database['public']['Enums']['fraud_subject_kind'];
+        };
+        Returns: unknown;
+      };
+      fraud_expire_actions: {
+        Args: {
+        };
+        Returns: number;
+      };
+      fraud_find_collusion_candidates: {
+        Args: {
+          p_max_trip_distance_m: number;
+          p_min_count: number;
+          p_since: unknown;
+        };
+        Returns: unknown;
+      };
+      fraud_find_route_deviation_candidates: {
+        Args: {
+          p_min_streak: number;
+          p_seen_since: unknown;
+        };
+        Returns: unknown;
+      };
+      fraud_get_active_action: {
+        Args: {
+          p_action_type: string;
+          p_subject_key: string;
+          p_subject_kind: Database['public']['Enums']['fraud_subject_kind'];
+        };
+        Returns: unknown;
+      };
+      fraud_has_active_action: {
+        Args: {
+          p_action_type: string;
+          p_subject_key: string;
+          p_subject_kind: Database['public']['Enums']['fraud_subject_kind'];
+        };
+        Returns: boolean;
+      };
+      fraud_log_event: {
+        Args: {
+          p_dedupe_key: string;
+          p_device_hash: string;
+          p_ip_prefix: string;
+          p_metadata: Json;
+          p_reason: string;
+          p_score: number;
+          p_severity: number;
+          p_subject_key: string;
+          p_subject_kind: Database['public']['Enums']['fraud_subject_kind'];
+        };
+        Returns: unknown;
+      };
+      fraud_open_case: {
+        Args: {
+          p_metadata: Json;
+          p_opened_by: string;
+          p_reason: string;
+          p_severity: number;
+          p_subject_key: string;
+          p_subject_kind: Database['public']['Enums']['fraud_subject_kind'];
+        };
+        Returns: unknown;
+      };
+      fraud_resolve_action: {
+        Args: {
+          p_action_id: string;
+          p_notes: string;
+          p_resolved_by: string;
+        };
+        Returns: undefined;
+      };
+      geo_cache_get_v1: {
+        Args: {
+          p_cache_key: string;
+        };
+        Returns: Json;
+      };
+      geo_cache_put_v1: {
+        Args: {
+          p_cache_key: string;
+          p_capability: string;
+          p_provider_code: string;
+          p_response: Json;
+          p_ttl_seconds: unknown;
+        };
+        Returns: undefined;
+      };
+      get_active_shift: {
+        Args: {
+          p_driver_id: string;
+        };
+        Returns: unknown;
+      };
+      get_applicable_pricing_rules: {
+        Args: {
+          p_region: string;
+          p_subtotal_iqd: number;
+          p_user_id: string;
+        };
+        Returns: unknown;
+      };
       get_assigned_driver: {
         Args: {
           p_ride_id: string;
@@ -5105,8 +7775,47 @@ export type Database = {
         };
         Returns: unknown;
       };
+      get_guardian_trip_info: {
+        Args: {
+          p_guardian_id: string;
+          p_trip_id: string;
+        };
+        Returns: unknown;
+      };
+      get_live_activity_throttle_config: {
+        Args: {
+          p_platform: Database['public']['Enums']['live_activity_platform'];
+        };
+        Returns: unknown;
+      };
       get_my_app_context: {
         Args: {
+        };
+        Returns: unknown;
+      };
+      get_nearby_hotspots: {
+        Args: {
+          p_lat: number;
+          p_lng: number;
+          p_radius_km: number;
+        };
+        Returns: unknown;
+      };
+      get_today_forecast: {
+        Args: {
+          p_zone_id: string;
+        };
+        Returns: unknown;
+      };
+      get_user_membership: {
+        Args: {
+          p_user_id: string;
+        };
+        Returns: unknown;
+      };
+      get_user_passkeys: {
+        Args: {
+          p_user_id: string;
         };
         Returns: unknown;
       };
@@ -5115,6 +7824,12 @@ export type Database = {
         };
         Returns: unknown;
       };
+      guardian_trip_track_user_v1: {
+        Args: {
+          p_trip_id: string;
+        };
+        Returns: Json;
+      };
       handle_new_user: {
         Args: {
         };
@@ -5122,7 +7837,6 @@ export type Database = {
       };
       is_admin: {
         Args: {
-          p_user: string;
         };
         Returns: boolean;
       };
@@ -5132,6 +7846,59 @@ export type Database = {
           p_rider_id: string;
         };
         Returns: boolean;
+      };
+      maps_pick_provider_v1: {
+        Args: {
+          p_capability: string;
+          p_exclude: string[];
+        };
+        Returns: string;
+      };
+      maps_pick_provider_v2: {
+        Args: {
+          p_capability: string;
+          p_exclude: string[];
+        };
+        Returns: string;
+      };
+      maps_pick_provider_v3: {
+        Args: {
+          p_capability: string;
+          p_exclude: string[];
+        };
+        Returns: string;
+      };
+      maps_pick_provider_v4: {
+        Args: {
+          p_capability: string;
+          p_exclude: string[];
+        };
+        Returns: string;
+      };
+      maps_provider_health_on_failure_v1: {
+        Args: {
+          p_base_cooldown_seconds: unknown;
+          p_capability: string;
+          p_error_code: string;
+          p_http_status: unknown;
+          p_provider_code: string;
+        };
+        Returns: undefined;
+      };
+      maps_provider_health_on_success_v1: {
+        Args: {
+          p_capability: string;
+          p_provider_code: string;
+        };
+        Returns: undefined;
+      };
+      maps_usage_increment_v1: {
+        Args: {
+          p_capability: string;
+          p_provider_code: string;
+          p_units: number;
+        };
+        Returns: undefined;
       };
       merchant_best_promo: {
         Args: {
@@ -5325,6 +8092,17 @@ export type Database = {
         };
         Returns: unknown;
       };
+      nearby_available_drivers_v2: {
+        Args: {
+          p_limit: number;
+          p_pickup_lat: number;
+          p_pickup_lng: number;
+          p_radius_m: number;
+          p_required_capacity: number;
+          p_stale_after_s: number;
+        };
+        Returns: Json;
+      };
       normalize_iraq_phone_e164: {
         Args: {
           p_phone: string;
@@ -5388,6 +8166,48 @@ export type Database = {
         };
         Returns: undefined;
       };
+      ops_db_conn_stats: {
+        Args: {
+        };
+        Returns: unknown;
+      };
+      ops_metric_latency_summary_v1: {
+        Args: {
+          p_limit: number;
+          p_since: string;
+        };
+        Returns: unknown;
+      };
+      passkey_register: {
+        Args: {
+          p_backup_eligible: boolean;
+          p_backup_state: boolean;
+          p_credential_id: unknown;
+          p_device_type: string;
+          p_friendly_name: string;
+          p_passkey_type: string;
+          p_public_key: unknown;
+          p_transports: string[];
+          p_user_agent: string;
+          p_user_id: string;
+          p_webauthn_device_type: string;
+        };
+        Returns: string;
+      };
+      passkey_revoke: {
+        Args: {
+          p_passkey_id: string;
+          p_reason: string;
+        };
+        Returns: boolean;
+      };
+      passkey_update_sign_count: {
+        Args: {
+          p_credential_id: unknown;
+          p_new_sign_count: number;
+        };
+        Returns: boolean;
+      };
       payout_claim_jobs: {
         Args: {
           p_limit: number;
@@ -5430,6 +8250,12 @@ export type Database = {
           p_window_seconds: number;
         };
         Returns: unknown;
+      };
+      rate_limit_prune: {
+        Args: {
+          p_grace_seconds: number;
+        };
+        Returns: number;
       };
       redeem_gift_code: {
         Args: {
@@ -5501,10 +8327,66 @@ export type Database = {
         };
         Returns: string;
       };
+      ride_chat_list_user_v1: {
+        Args: {
+          p_before: string;
+          p_limit: number;
+          p_ride_id: string;
+        };
+        Returns: Json;
+      };
+      ride_chat_mark_read: {
+        Args: {
+          p_last_read_at: string;
+          p_last_read_message_id: string;
+          p_ride_id: string;
+        };
+        Returns: Json;
+      };
       ride_chat_notify_on_message: {
         Args: {
         };
         Returns: unknown;
+      };
+      ride_chat_send_message: {
+        Args: {
+          p_attachment_bucket: string;
+          p_attachment_key: string;
+          p_kind: Database['public']['Enums']['chat_message_type'];
+          p_message_id: string;
+          p_metadata: Json;
+          p_ride_id: string;
+          p_text: string;
+        };
+        Returns: Json;
+      };
+      ride_intent_create_user_v1: {
+        Args: {
+          p_dropoff_address: string;
+          p_dropoff_lat: number;
+          p_dropoff_lng: number;
+          p_intent_id: string;
+          p_pickup_address: string;
+          p_pickup_lat: number;
+          p_pickup_lng: number;
+          p_preferences: Json;
+          p_product_code: string;
+          p_scheduled_at: string;
+          p_source: Database['public']['Enums']['ride_intent_source'];
+        };
+        Returns: Json;
+      };
+      ride_pickup_pin_mark_verified: {
+        Args: {
+          p_ride_id: string;
+        };
+        Returns: Json;
+      };
+      ride_pickup_pin_record_failure: {
+        Args: {
+          p_ride_id: string;
+        };
+        Returns: Json;
       };
       ride_requests_clear_match_fields: {
         Args: {
@@ -5526,6 +8408,13 @@ export type Database = {
         };
         Returns: unknown;
       };
+      ride_verify_pickup_pin: {
+        Args: {
+          p_pin: string;
+          p_ride_id: string;
+        };
+        Returns: Json;
+      };
       ridecheck_open_event_v1: {
         Args: {
           p_kind: Database['public']['Enums']['ridecheck_kind'];
@@ -5534,10 +8423,52 @@ export type Database = {
         };
         Returns: string;
       };
+      ridecheck_respond_user: {
+        Args: {
+          p_event_id: string;
+          p_note: string;
+          p_response: Database['public']['Enums']['ridecheck_response'];
+        };
+        Returns: unknown;
+      };
       ridecheck_run_v1: {
         Args: {
         };
         Returns: undefined;
+      };
+      safety_preferences_before_upsert: {
+        Args: {
+        };
+        Returns: unknown;
+      };
+      scheduled_ride_cancel_user_v1: {
+        Args: {
+          p_id: string;
+        };
+        Returns: Json;
+      };
+      scheduled_ride_create_user_v1: {
+        Args: {
+          p_dropoff_address: string;
+          p_dropoff_lat: number;
+          p_dropoff_lng: number;
+          p_fare_quote_id: string;
+          p_payment_method: Database['public']['Enums']['ride_payment_method'];
+          p_pickup_address: string;
+          p_pickup_lat: number;
+          p_pickup_lng: number;
+          p_preferences: Json;
+          p_product_code: string;
+          p_scheduled_at: string;
+          p_scheduled_ride_id: string;
+        };
+        Returns: Json;
+      };
+      scheduled_ride_list_user_v1: {
+        Args: {
+          p_limit: number;
+        };
+        Returns: Json;
       };
       scheduled_rides_execute_due: {
         Args: {
@@ -5619,6 +8550,56 @@ export type Database = {
         };
         Returns: string;
       };
+      support_article_get_public_v1: {
+        Args: {
+          p_slug: string;
+        };
+        Returns: Json;
+      };
+      support_articles_list_public_v1: {
+        Args: {
+        };
+        Returns: Json;
+      };
+      support_categories_list_user_v1: {
+        Args: {
+        };
+        Returns: Json;
+      };
+      support_ticket_create_user_v1: {
+        Args: {
+          p_category_code: string;
+          p_category_key: string;
+          p_message: string;
+          p_priority: Database['public']['Enums']['support_ticket_priority'];
+          p_ride_id: string;
+          p_role_context: Database['public']['Enums']['user_role'];
+          p_subject: string;
+        };
+        Returns: Json;
+      };
+      support_ticket_get_user_v1: {
+        Args: {
+          p_ticket_id: string;
+        };
+        Returns: Json;
+      };
+      support_ticket_list_user_v1: {
+        Args: {
+          p_limit: number;
+          p_offset: number;
+          p_status: string;
+        };
+        Returns: Json;
+      };
+      support_ticket_post_message_user_v1: {
+        Args: {
+          p_attachments: Json;
+          p_message: string;
+          p_ticket_id: string;
+        };
+        Returns: Json;
+      };
       support_ticket_touch_updated_at: {
         Args: {
         };
@@ -5679,10 +8660,32 @@ export type Database = {
         };
         Returns: unknown;
       };
+      transition_ride_user_v1: {
+        Args: {
+          p_cash_change_given_iqd: number;
+          p_cash_collected_amount_iqd: number;
+          p_expected_version: number;
+          p_ride_id: string;
+          p_to_status: Database['public']['Enums']['ride_status'];
+        };
+        Returns: unknown;
+      };
       transition_ride_v2: {
         Args: {
           p_actor_id: string;
           p_actor_type: Database['public']['Enums']['ride_actor_type'];
+          p_expected_version: number;
+          p_ride_id: string;
+          p_to_status: Database['public']['Enums']['ride_status'];
+        };
+        Returns: unknown;
+      };
+      transition_ride_v3: {
+        Args: {
+          p_actor_id: string;
+          p_actor_type: Database['public']['Enums']['ride_actor_type'];
+          p_cash_change_given_iqd: number;
+          p_cash_collected_amount_iqd: number;
           p_expected_version: number;
           p_ride_id: string;
           p_to_status: Database['public']['Enums']['ride_status'];
@@ -5713,6 +8716,82 @@ export type Database = {
         Args: {
         };
         Returns: unknown;
+      };
+      trg_wh_trip_share_auto: {
+        Args: {
+        };
+        Returns: unknown;
+      };
+      trip_claim_pending_broadcasts: {
+        Args: {
+          p_limit: number;
+        };
+        Returns: unknown;
+      };
+      trip_guardian_link_create: {
+        Args: {
+          p_teen_user_id: string;
+          p_trip_id: string;
+        };
+        Returns: unknown;
+      };
+      trip_live_activity_get_tokens: {
+        Args: {
+          p_trip_id: string;
+        };
+        Returns: unknown;
+      };
+      trip_live_activity_record_push: {
+        Args: {
+          p_activity_id: string;
+        };
+        Returns: undefined;
+      };
+      trip_live_activity_register: {
+        Args: {
+          p_platform: Database['public']['Enums']['live_activity_platform'];
+          p_show_full_addresses: boolean;
+          p_token: string;
+          p_trip_id: string;
+        };
+        Returns: unknown;
+      };
+      trip_live_activity_revoke: {
+        Args: {
+          p_trip_id: string;
+        };
+        Returns: undefined;
+      };
+      trip_record_status_transition: {
+        Args: {
+          p_distance_remaining_m: number;
+          p_eta_minutes: number;
+          p_new_status: string;
+          p_old_status: string;
+          p_trip_id: string;
+        };
+        Returns: unknown;
+      };
+      trip_share_auto_create_v1: {
+        Args: {
+          p_ride_id: string;
+          p_rider_id: string;
+          p_ttl_minutes: number;
+        };
+        Returns: Json;
+      };
+      trip_share_create_user_v1: {
+        Args: {
+          p_ride_id: string;
+          p_ttl_minutes: number;
+        };
+        Returns: Json;
+      };
+      trip_share_view_public_v1: {
+        Args: {
+          p_token: string;
+        };
+        Returns: Json;
       };
       trusted_contact_outbox_claim: {
         Args: {
@@ -5855,6 +8934,35 @@ export type Database = {
       };
       wallet_withdraw_audit_log_trigger: {
         Args: {
+        };
+        Returns: unknown;
+      };
+      webauthn_consume_challenge: {
+        Args: {
+          p_challenge_id: string;
+        };
+        Returns: boolean;
+      };
+      webauthn_consume_challenge_details: {
+        Args: {
+          p_challenge_id: string;
+        };
+        Returns: unknown;
+      };
+      webauthn_create_challenge: {
+        Args: {
+          p_challenge: unknown;
+          p_challenge_type: string;
+          p_session_id: string;
+          p_user_agent: string;
+          p_user_id: string;
+        };
+        Returns: unknown;
+      };
+      webhook_claim_jobs: {
+        Args: {
+          p_limit: number;
+          p_lock_seconds: number;
         };
         Returns: unknown;
       };
