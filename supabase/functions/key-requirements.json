@@ -6,21 +6,9 @@
       "key": "anon",
       "reason": "User-scoped endpoint using publishable key with RLS and user JWT."
     },
-    "admin-fraud-actions": {
+    "admin-api": {
       "key": "service_role",
-      "reason": "Privileged admin operation requiring service role to bypass RLS."
-    },
-    "admin-fraud-cases": {
-      "key": "service_role",
-      "reason": "Privileged admin operation requiring service role to bypass RLS."
-    },
-    "admin-ride-intent-convert": {
-      "key": "service_role",
-      "reason": "Privileged admin operation requiring service role to bypass RLS."
-    },
-    "admin-users-list": {
-      "key": "service_role",
-      "reason": "Privileged admin operation requiring service role to bypass RLS."
+      "reason": "Consolidated privileged admin API router that dispatches to multiple admin endpoints. Uses service role for controlled bypass of RLS after explicit permission checks (requirePermission) and rate limiting."
     },
     "ai-gateway": {
       "key": "service_role",
@@ -86,10 +74,6 @@
       "key": "anon",
       "reason": "User-scoped endpoint using publishable key with RLS and user JWT."
     },
-    "geo": {
-      "key": "service_role",
-      "reason": "Server-side geo orchestration that calls third-party routing/geocoding APIs using secret provider keys, enforces provider fallback/quota rules, caches responses, and persists request logs; uses service role for controlled writes/reads."
-    },
     "fee-breakdown": {
       "key": "service_role",
       "reason": "Server-side endpoint requiring service role for controlled privileged database access."
@@ -97,6 +81,10 @@
     "fraud-score-runner": {
       "key": "service_role",
       "reason": "Background/cron job requiring service role for server-side writes and maintenance tasks."
+    },
+    "geo": {
+      "key": "service_role",
+      "reason": "Server-side geo orchestration that calls third-party routing/geocoding APIs using secret provider keys, enforces provider fallback/quota rules, caches responses, and persists request logs; uses service role for controlled writes/reads."
     },
     "hotspot-guidance": {
       "key": "service_role",
@@ -145,6 +133,10 @@
     "notifications-send": {
       "key": "service_role",
       "reason": "Internal send worker that writes delivery outcomes and updates notification state server-side; uses service role."
+    },
+    "ops-alert-notifier": {
+      "key": "service_role",
+      "reason": "Cron notifier that dispatches ops alert events to Slack/webhooks/email and updates notification state; requires service role for server-side reads/writes."
     },
     "ops-alert-runner": {
       "key": "service_role",
@@ -334,6 +326,5 @@
       "key": "service_role",
       "reason": "Withdrawal provider webhook ingest: verifies signature then persists events and updates payout records; service role required."
     }
-  },
-  "version": 2
+  }
 }

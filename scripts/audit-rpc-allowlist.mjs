@@ -56,7 +56,10 @@ function loadAllowlist() {
 }
 
 function isFrontendFile(p) {
-  return p.includes(`${path.sep}apps${path.sep}web${path.sep}`);
+  return (
+    p.includes(`${path.sep}apps${path.sep}web${path.sep}`) ||
+    p.includes(`${path.sep}admin_dashboard${path.sep}`)
+  );
 }
 
 function isEdgeFunctionFile(p) {

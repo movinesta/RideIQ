@@ -15,6 +15,7 @@ const SCHEMA = path.join(ROOT, 'supabase', 'schema.sql');
 const MIGRATIONS_DIR = path.join(ROOT, 'supabase', 'migrations');
 const CODE_ROOTS = [
   path.join(ROOT, 'apps'),
+  path.join(ROOT, 'admin_dashboard'),
   path.join(ROOT, 'supabase', 'functions'),
 ];
 
@@ -22,9 +23,20 @@ function readFile(p) {
   return fs.readFileSync(p, 'utf8');
 }
 
+const IGNORE_DIRS = new Set([
+  'node_modules',
+  'dist',
+  'build',
+  'coverage',
+  '.next',
+  '.turbo',
+  '.cache',
+]);
+
 function walk(dir, exts) {
   const out = [];
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (ent.isDirectory() && IGNORE_DIRS.has(ent.name)) continue;
     const p = path.join(dir, ent.name);
     if (ent.isDirectory()) out.push(...walk(p, exts));
     else if (exts.some((e) => ent.name.endsWith(e))) out.push(p);

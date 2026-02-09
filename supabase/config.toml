@@ -110,6 +110,9 @@ verify_jwt = false
 [functions.ops-alert-runner]
 verify_jwt = false
 
+[functions.ops-alert-notifier]
+verify_jwt = false
+
 [functions.payout-job-runner]
 verify_jwt = false
 

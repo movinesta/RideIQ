@@ -60,7 +60,9 @@ export function errorJson(
   extra?: Record<string, unknown>,
   headers: Record<string, string> = {},
 ) {
-  const body: Record<string, unknown> = { error: message };
+  // Keep error envelope stable and machine-readable.
+  // Many clients only look for `error`, but `ok: false` is helpful for debugging and parity with success payloads.
+  const body: Record<string, unknown> = { ok: false, error: message };
   if (code) body.code = code;
   if (extra) Object.assign(body, extra);
   return json(body, status, headers);

@@ -11,7 +11,7 @@
  *  - config/security/rpc-allowlist.json
  *
  * Targets:
- *  - supabase/migrations/20260206009900_p0_security_hardening.sql (REQUIRED)
+ *  - supabase/migrations/20260208130000_p0_security_hardening.sql (REQUIRED)
  *    Source of truth for deny-by-default EXECUTE posture.
  *  - supabase/schema.sql (OPTIONAL)
  *    If present AND it contains marker blocks, this generator will update it too.
@@ -35,7 +35,15 @@ const ALLOWLIST_PATH = path.join(ROOT, 'config', 'security', 'rpc-allowlist.json
 // without stable marker anchors.
 const SCHEMA_SQL_PATH = path.join(ROOT, 'supabase', 'schema.sql');
 // Keep deny-by-default grants in sync for migrations (required).
-const MIGRATION_PATH = path.join(ROOT, 'supabase', 'migrations', '20260206009900_p0_security_hardening.sql');
+const MIGRATION_PATH = path.join(ROOT, 'supabase', 'migrations', '20260208130000_p0_security_hardening.sql');
+// Security hardening is re-applied as the last migration to avoid accidental re-exposure
+// when later migrations create/replace functions.
+const MIGRATION_REFRESH_PATH = path.join(
+  ROOT,
+  'supabase',
+  'migrations',
+  '20260209145000_security_hardening_refresh.sql'
+);
 const SECURITY_TEST_PATH = path.join(ROOT, 'supabase', 'tests', '005_security_hardening.test.sql');
 
 function readText(p) {
@@ -124,6 +132,9 @@ function generate() {
   if (!fs.existsSync(MIGRATION_PATH)) {
     throw new Error(`Missing required migration file: ${MIGRATION_PATH}`);
   }
+  if (!fs.existsSync(MIGRATION_REFRESH_PATH)) {
+    throw new Error(`Missing required migration file: ${MIGRATION_REFRESH_PATH}`);
+  }
 
   const { anon, authenticated } = loadAllowlist();
 
@@ -136,6 +147,11 @@ function generate() {
     throw new Error(`Missing marker blocks in required migration: ${MIGRATION_PATH}`);
   }
 
+  const refreshOut = updateTargetFile(MIGRATION_REFRESH_PATH, 'RPC_ALLOWLIST_ANON', 'RPC_ALLOWLIST_AUTHENTICATED');
+  if (!refreshOut.exists || refreshOut.skipped) {
+    throw new Error(`Missing marker blocks in required migration: ${MIGRATION_REFRESH_PATH}`);
+  }
+
   // Update pgTAP test allowlists
   let testSql = readText(SECURITY_TEST_PATH);
   testSql = replaceBlockInText(testSql, 'RPC_ALLOWLIST_ANON_TEST', buildTestList(anon), path.relative(ROOT, SECURITY_TEST_PATH));
@@ -146,7 +162,7 @@ function generate() {
     path.relative(ROOT, SECURITY_TEST_PATH)
   );
 
-  return { schemaOut, migrationOut, testSql };
+  return { schemaOut, migrationOut, refreshOut, testSql };
 }
 
 function main() {
@@ -157,20 +173,22 @@ function main() {
   const currentTest = readText(SECURITY_TEST_PATH);
 
   const currentMigration = readText(MIGRATION_PATH);
+  const currentRefreshMigration = readText(MIGRATION_REFRESH_PATH);
 
   if (check) {
     const schemaMismatch = next.schemaOut.exists && !next.schemaOut.skipped ? currentSchema !== next.schemaOut.nextText : false;
     const testMismatch = currentTest !== next.testSql;
 
     const migrationMismatch = currentMigration !== next.migrationOut.nextText;
+    const refreshMismatch = currentRefreshMigration !== next.refreshOut.nextText;
 
-    if (schemaMismatch || testMismatch || migrationMismatch) {
+    if (schemaMismatch || testMismatch || migrationMismatch || refreshMismatch) {
       console.error('\nFAIL — Security allowlists are out of sync with config/security/rpc-allowlist.json');
       console.error('Run: node scripts/generate-security-hardening.mjs');
       process.exit(1);
     }
 
-    console.log('OK — Security allowlists are in sync (migration + pgTAP tests)');
+    console.log('OK — Security allowlists are in sync (migrations + pgTAP tests)');
     if (next.schemaOut.exists && next.schemaOut.skipped) {
       console.log('NOTE — schema.sql exists but has no marker blocks; skipped (OK).');
     }
@@ -187,6 +205,9 @@ function main() {
 
   fs.writeFileSync(MIGRATION_PATH, next.migrationOut.nextText);
   console.log(`Updated: ${path.relative(ROOT, MIGRATION_PATH)}`);
+
+  fs.writeFileSync(MIGRATION_REFRESH_PATH, next.refreshOut.nextText);
+  console.log(`Updated: ${path.relative(ROOT, MIGRATION_REFRESH_PATH)}`);
 }
 
 try {

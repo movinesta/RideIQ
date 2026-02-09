@@ -67,12 +67,32 @@ function listFunctionDirs() {
     .sort();
 }
 
-function readIndexSrc(fnName) {
-  const idx = path.join(FUNCTIONS_ROOT, fnName, 'index.ts');
+function readFunctionSrc(fnName) {
+  const dir = path.join(FUNCTIONS_ROOT, fnName);
+  const idx = path.join(dir, 'index.ts');
   if (!fs.existsSync(idx)) {
     die(`Function "${fnName}" is missing index.ts at ${path.relative(REPO_ROOT, idx)}`);
   }
-  return fs.readFileSync(idx, 'utf8');
+
+  const chunks = [];
+  const stack = [dir];
+
+  while (stack.length) {
+    const cur = stack.pop();
+    const entries = fs.readdirSync(cur, { withFileTypes: true });
+    for (const e of entries) {
+      const p = path.join(cur, e.name);
+      if (e.isDirectory()) {
+        // ignore vendored deps if any
+        if (e.name === 'node_modules') continue;
+        stack.push(p);
+      } else if (e.isFile() && e.name.endsWith('.ts')) {
+        chunks.push(fs.readFileSync(p, 'utf8'));
+      }
+    }
+  }
+
+  return chunks.join('\n');
 }
 
 function usesServiceClient(src) {
@@ -144,7 +164,7 @@ function main() {
     const entry = req[fn];
     const declared = normalized.version === 2 ? String(entry?.key ?? '') : String(entry);
     const reason = normalized.version === 2 ? String(entry?.reason ?? '') : '';
-    const src = readIndexSrc(fn);
+    const src = readFunctionSrc(fn);
 
     const service = usesServiceClient(src);
     const userish = usesUserOrPublicClient(src);

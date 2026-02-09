@@ -2,12 +2,12 @@
 -- PostgreSQL database dump
 --
 
-\restrict WZ316yFBlj5YnxpAIrMzZGKOIUl3oDfPoPxYK2akNrlhtjh2GzZmXJHcMuBP8Wp
+\restrict RcsBoyqYanR5PUHarNDZ5WFjdfSsq2zkKd1WPYsmzBK5xb6lXJys02gp5q79Tdx
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.7
 
--- Started on 2026-02-07 19:14:48
+-- Started on 2026-02-07 21:21:36
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -3476,40 +3476,40 @@ CREATE FUNCTION public.admin_maps_requests_stats_v1() RETURNS TABLE(provider_cod
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'public'
     AS $$
-DECLARE
+declare
   v_uid uuid := auth.uid();
-BEGIN
-  IF v_uid IS NULL THEN
-    RAISE EXCEPTION 'not_authenticated';
-  END IF;
-  IF NOT (SELECT public.is_admin()) THEN
-    RAISE EXCEPTION 'not_authorized';
-  END IF;
+begin
+  if v_uid is null then
+    raise exception 'not_authenticated';
+  end if;
+  if not (select public.is_admin()) then
+    raise exception 'not_authorized';
+  end if;
 
-  RETURN QUERY
-  SELECT
+  return query
+  select
     mc.provider_code,
     mc.capability,
-    COALESCE(COUNT(l.*) FILTER (WHERE l.created_at >= now() - interval '1 hour'), 0)::int AS requests_1h,
-    COALESCE(COUNT(l.*), 0)::int AS requests_24h,
-    COALESCE(SUM(l.billed_units) FILTER (WHERE l.created_at >= now() - interval '1 hour'), 0)::bigint AS billed_units_1h,
-    COALESCE(SUM(l.billed_units), 0)::bigint AS billed_units_24h,
-    COALESCE(COUNT(l.*) FILTER (WHERE l.created_at >= now() - interval '1 hour' AND l.cache_hit = true), 0)::int AS cache_hits_1h,
-    COALESCE(COUNT(l.*) FILTER (WHERE l.cache_hit = true), 0)::int AS cache_hits_24h,
-    COALESCE(COUNT(l.*) FILTER (WHERE l.created_at >= now() - interval '1 hour' AND l.http_status >= 400), 0)::int AS errors_1h,
-    COALESCE(COUNT(l.*) FILTER (WHERE l.http_status >= 400), 0)::int AS errors_24h,
-    COALESCE(COUNT(l.*) FILTER (WHERE l.created_at >= now() - interval '1 hour' AND l.http_status = 429), 0)::int AS rate_limited_1h,
-    COALESCE(COUNT(l.*) FILTER (WHERE l.http_status = 429), 0)::int AS rate_limited_24h
-  FROM public.maps_provider_capabilities mc
-  JOIN public.maps_providers mp ON mp.provider_code = mc.provider_code
-  LEFT JOIN public.maps_requests_log l
-    ON l.provider_code = mc.provider_code
-   AND l.capability = mc.capability
-   AND l.created_at >= now() - interval '24 hours'
-   AND NOT (l.http_status = 424 AND COALESCE(l.error_code, '') = 'missing_provider_key')
-  GROUP BY mc.provider_code, mc.capability
-  ORDER BY mc.provider_code, mc.capability;
-END;
+    coalesce(count(l.*) filter (where l.created_at >= now() - interval '1 hour'), 0)::int as requests_1h,
+    coalesce(count(l.*), 0)::int as requests_24h,
+    coalesce(sum(l.billed_units) filter (where l.created_at >= now() - interval '1 hour'), 0)::bigint as billed_units_1h,
+    coalesce(sum(l.billed_units), 0)::bigint as billed_units_24h,
+    coalesce(count(l.*) filter (where l.created_at >= now() - interval '1 hour' and l.cache_hit = true), 0)::int as cache_hits_1h,
+    coalesce(count(l.*) filter (where l.cache_hit = true), 0)::int as cache_hits_24h,
+    coalesce(count(l.*) filter (where l.created_at >= now() - interval '1 hour' and l.http_status >= 400), 0)::int as errors_1h,
+    coalesce(count(l.*) filter (where l.http_status >= 400), 0)::int as errors_24h,
+    coalesce(count(l.*) filter (where l.created_at >= now() - interval '1 hour' and l.http_status = 429), 0)::int as rate_limited_1h,
+    coalesce(count(l.*) filter (where l.http_status = 429), 0)::int as rate_limited_24h
+  from public.maps_provider_capabilities mc
+  join public.maps_providers mp on mp.provider_code = mc.provider_code
+  left join public.maps_requests_log l
+    on l.provider_code = mc.provider_code
+   and l.capability = mc.capability
+   and l.created_at >= now() - interval '24 hours'
+   and not (l.http_status = 424 and coalesce(l.error_code, '') = 'missing_provider_key')
+  group by mc.provider_code, mc.capability
+  order by mc.provider_code, mc.capability;
+end;
 $$;
 
 
@@ -5976,7 +5976,7 @@ ALTER FUNCTION public.customer_addresses_enforce_single_default() OWNER TO postg
 
 CREATE FUNCTION public.dispatch_accept_ride(p_request_id uuid, p_driver_id uuid) RETURNS TABLE(ride_id uuid, ride_status public.ride_status, request_status public.ride_request_status, wallet_hold_id uuid, rider_id uuid, driver_id uuid, started_at timestamp with time zone, completed_at timestamp with time zone, fare_amount_iqd integer, currency text)
     LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO pg_catalog, public, extensions
+    SET search_path TO 'pg_catalog', 'public', 'extensions'
     AS $$
 DECLARE
   rr record;
@@ -6113,7 +6113,7 @@ COMMENT ON FUNCTION public.dispatch_accept_ride(p_request_id uuid, p_driver_id u
 
 CREATE FUNCTION public.dispatch_accept_ride_user(p_request_id uuid) RETURNS TABLE(ride_id uuid, ride_status public.ride_status, request_status public.ride_request_status, wallet_hold_id uuid, rider_id uuid, driver_id uuid, started_at timestamp with time zone, completed_at timestamp with time zone, fare_amount_iqd integer, currency text)
     LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO pg_catalog, public, extensions
+    SET search_path TO 'pg_catalog', 'public', 'extensions'
     AS $$
 DECLARE
   v_uid uuid;
@@ -6140,7 +6140,7 @@ ALTER FUNCTION public.dispatch_accept_ride_user(p_request_id uuid) OWNER TO post
 
 CREATE FUNCTION public.dispatch_match_ride(p_request_id uuid, p_rider_id uuid, p_radius_m numeric DEFAULT 5000, p_limit_n integer DEFAULT 20, p_match_ttl_seconds integer DEFAULT 120, p_stale_after_seconds integer DEFAULT 120) RETURNS TABLE(id uuid, status public.ride_request_status, assigned_driver_id uuid, match_deadline timestamp with time zone, match_attempts integer, matched_at timestamp with time zone)
     LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO pg_catalog, public, extensions
+    SET search_path TO 'pg_catalog', 'public', 'extensions'
     AS $$
 declare
   rr record;
@@ -6377,7 +6377,7 @@ COMMENT ON FUNCTION public.dispatch_match_ride(p_request_id uuid, p_rider_id uui
 
 CREATE FUNCTION public.dispatch_match_ride_user(p_request_id uuid, p_radius_m numeric DEFAULT 5000, p_limit_n integer DEFAULT 20, p_match_ttl_seconds integer DEFAULT 120, p_stale_after_seconds integer DEFAULT 120) RETURNS TABLE(id uuid, status public.ride_request_status, assigned_driver_id uuid, match_deadline timestamp with time zone, match_attempts integer, matched_at timestamp with time zone)
     LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO pg_catalog, public, extensions
+    SET search_path TO 'pg_catalog', 'public', 'extensions'
     AS $$
 DECLARE
   v_uid uuid;
@@ -20466,7 +20466,8 @@ CREATE TABLE public.admin_audit_log (
     actor_id uuid NOT NULL,
     action public.admin_audit_action NOT NULL,
     target_user_id uuid NOT NULL,
-    note text
+    note text,
+    details jsonb
 );
 
 
@@ -51686,11 +51687,11 @@ CREATE EVENT TRIGGER pgrst_drop_watch ON sql_drop
 
 ALTER EVENT TRIGGER pgrst_drop_watch OWNER TO supabase_admin;
 
--- Completed on 2026-02-07 19:24:21
+-- Completed on 2026-02-07 21:31:14
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict WZ316yFBlj5YnxpAIrMzZGKOIUl3oDfPoPxYK2akNrlhtjh2GzZmXJHcMuBP8Wp
+\unrestrict RcsBoyqYanR5PUHarNDZ5WFjdfSsq2zkKd1WPYsmzBK5xb6lXJys02gp5q79Tdx
 

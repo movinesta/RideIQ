@@ -1,8 +1,7 @@
 {
-  "version": 2,
   "description": "Auth model for Supabase Edge Functions. Used by scripts/audit-edge-functions.mjs to enforce verify_jwt=false guards and warn about verify_jwt policy drift.",
   "functions": {
-    "admin-users-list": {
+    "admin-api": {
       "auth": "user_jwt"
     },
     "ai-gateway": {
@@ -82,6 +81,9 @@
     },
     "notifications-dispatch": {
       "auth": "webhook_signature"
+    },
+    "ops-alert-notifier": {
+      "auth": "cron_secret"
     },
     "ops-alert-runner": {
       "auth": "cron_secret"
@@ -182,5 +184,6 @@
     "zaincash-withdraw-webhook": {
       "auth": "webhook_signature"
     }
-  }
+  },
+  "version": 2
 }

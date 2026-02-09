@@ -9,6 +9,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Required by local auth hooks config to start Supabase in CI.
+      AUTH_HOOK_SECRET: v1,whsec_dGVzdF9zZWNyZXRfdGhhdF9pc19sb25nX2Vub3VnaA==
 
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +28,7 @@ jobs:
         run: supabase db reset --no-seed
 
       - name: Lint database (plpgsql_check)
-        run: supabase db lint --level error
+        run: supabase db lint --schema public --level error --fail-on error
 
       - name: Run pgTAP tests
         run: supabase test db

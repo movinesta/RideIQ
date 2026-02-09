@@ -43,13 +43,31 @@ export async function consumeRateLimit(params: {
 }
 
 export function getClientIp(req: Request): string | null {
-  const xff = req.headers.get('x-forwarded-for');
-  if (xff) {
-    const first = xff.split(',')[0]?.trim();
-    return first || null;
+  // Prefer trusted single-IP headers when available.
+  const candidates = [
+    req.headers.get('cf-connecting-ip'),
+    req.headers.get('true-client-ip'),
+    req.headers.get('x-real-ip'),
+    req.headers.get('x-forwarded-for'),
+  ];
+
+  for (const raw of candidates) {
+    if (!raw) continue;
+
+    // x-forwarded-for may be a comma-separated list; take the first hop.
+    const first = raw.split(',')[0]?.trim();
+    if (!first) continue;
+
+    // Basic sanity check: avoid clearly invalid tokens.
+    if (first.length > 80) continue;
+    if (!/^[0-9a-fA-F:.]+$/.test(first)) continue;
+
+    return first;
   }
+
   return null;
 }
+
 
 
 function secondsUntilReset(resetAt: string): number {
