@@ -1,9 +1,11 @@
 # Node / Next
 node_modules/
 .next/
+.swc/
 dist/
 coverage/
 playwright-report/
+*.tsbuildinfo
 
 # Env
 .env
