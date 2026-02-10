@@ -9,6 +9,8 @@ import { formatIQD } from '../lib/money';
 import QuoteBreakdownCard, { type QuoteBreakdown } from '../components/QuoteBreakdownCard';
 import { useTranslation } from 'react-i18next';
 import { invokeEdge } from '../lib/edgeInvoke';
+import { createNearbyInvalidationSubscription } from '../lib/ablyClient';
+import { encodeGeohash } from '../lib/geohash';
 import SafetyToolkitModal from '../components/SafetyToolkitModal';
 import RideCheckModal from '../components/RideCheckModal';
 import { MapView, type LatLng, type MapMarker, type MapCircle, type MapPolyline } from '../components/maps/MapView';
@@ -178,8 +180,13 @@ export default function RiderPage() {
 
   const reverseReqId = React.useRef(0);
 
+  const nearbyDriversQueryKey = React.useMemo(
+    () => ['drivers_nearby', previewRequestId, pickupLat, pickupLng, previewRadiusM] as const,
+    [previewRequestId, pickupLat, pickupLng, previewRadiusM],
+  );
+
   const nearbyDrivers = useQuery({
-    queryKey: ['drivers_nearby', previewRequestId, pickupLat, pickupLng, previewRadiusM],
+    queryKey: nearbyDriversQueryKey,
     enabled: Boolean(pickupPos),
     queryFn: async () => {
       if (!pickupPos) return [];
@@ -193,8 +200,46 @@ export default function RiderPage() {
       if (!res || res.ok === false) return [];
       return (res.drivers ?? []) as Array<any>;
     },
-    staleTime: 5_000,
+    // Ably invalidation triggers immediate refetch; keep a low-frequency polling fallback.
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
+
+  // Ably realtime invalidation: "invalidate -> refetch" for the pickup area (no continuous driver streams).
+  React.useEffect(() => {
+    if (!pickupPos) return;
+
+    const gh6 = encodeGeohash(pickupPos.lat, pickupPos.lng, 6);
+    const channel = `nearby:gh6:${gh6}`;
+
+    let alive = true;
+    let unsubscribe: (() => void) | null = null;
+
+    void (async () => {
+      try {
+        const u = await createNearbyInvalidationSubscription({
+          channels: [channel],
+          onInvalidate: () => qc.invalidateQueries({ queryKey: nearbyDriversQueryKey }),
+        });
+        if (!alive) {
+          u();
+          return;
+        }
+        unsubscribe = u;
+      } catch {
+        // Best-effort: if Ably is offline/misconfigured/blocked, polling fallback still refreshes.
+      }
+    })();
+
+    return () => {
+      alive = false;
+      try {
+        unsubscribe?.();
+      } catch {
+        // ignore
+      }
+    };
+  }, [pickupPos, qc, nearbyDriversQueryKey]);
 
   const mapMarkers = React.useMemo<MapMarker[]>(() => {
     const ms: MapMarker[] = [];

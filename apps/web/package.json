@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "ably": "^2.12.0",
     "@supabase/supabase-js": "^2.95.2",
     "@tanstack/react-query": "^5.90.20",
     "i18next": "^25.8.4",

@@ -2,6 +2,8 @@ import { errorJson, json } from '../_shared/json.ts';
 import { consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
 import { createUserClient, requireUser } from '../_shared/supabase.ts';
 import { withRequestContext } from '../_shared/requestContext.ts';
+import { ablyPublish } from '../_shared/ably.ts';
+import { encodeGeohash } from '../_shared/geohash.ts';
 
 type ValidVehicleType = 'car_private' | 'car_taxi' | 'motorcycle' | 'cargo';
 
@@ -86,6 +88,19 @@ Deno.serve((req) => withRequestContext('driver-location-update', req, async (ctx
 
             ctx.log('RPC Error', { error: rpcErr });
             return errorJson('Database error', 500, 'DB_ERROR');
+        }
+
+        // Best-effort nearby-driver invalidation publish (tiny payload; no location fanout).
+        try {
+            const gh6 = encodeGeohash(lat, lng, 6);
+            const channel = `nearby:gh6:${gh6}`;
+            const bucket = Math.floor(Date.now() / 2000); // 2s bucket for idempotent publishing
+            const msgId = `inv:${gh6}:${bucket}`;
+            await ablyPublish(channel, 'invalidate', { t: Date.now() }, msgId);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (msg.includes('ABLY_NOT_CONFIGURED')) ctx.log('ably.not_configured');
+            else ctx.warn('ably.publish_failed', { error: msg });
         }
 
         return json({ ok: true });

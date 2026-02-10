@@ -2,6 +2,7 @@ import { withRequestContext } from '../_shared/requestContext.ts';
 import { errorJson, json } from '../_shared/json.ts';
 import { requireUser } from '../_shared/supabase.ts';
 import { buildRateLimitHeaders, consumeRateLimit, getClientIp } from '../_shared/rateLimit.ts';
+import { getJson as redisGetJson, isRedisConfigured, setJson as redisSetJson } from '../_shared/redis.ts';
 
 import { googleComputeRoutes, googleComputeRouteMatrix } from '../_shared/geo/providers/googleRoutes.ts';
 import { googleGeocode, googleReverseGeocode } from '../_shared/geo/providers/googleGeocoding.ts';
@@ -265,6 +266,17 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
   }
 
   async function cacheGet(cacheKey: string) {
+    const redisKey = `geo:v1:${cacheKey}`;
+    if (isRedisConfigured()) {
+      try {
+        const cached = await redisGetJson<any>(redisKey);
+        if (cached != null) return cached;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        ctx.warn('geo.cache.redis_get_failed', { error: msg });
+        // fall through to Postgres fallback
+      }
+    }
     try {
       const { data, error } = await service.rpc('geo_cache_get_v1', { p_cache_key: cacheKey });
       if (error) return null;
@@ -275,14 +287,28 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
   }
 
   async function cachePut(cacheKey: string, provider: ProviderCode, responseJson: unknown, ttlSeconds: number) {
+    if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) return;
+    const ttl = Math.max(60, Math.min(60 * 60 * 24 * 7, Math.trunc(ttlSeconds)));
+
+    const redisKey = `geo:v1:${cacheKey}`;
+    if (isRedisConfigured()) {
+      try {
+        await redisSetJson(redisKey, responseJson, ttl);
+        return;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        ctx.warn('geo.cache.redis_set_failed', { error: msg });
+        // fall through to Postgres fallback
+      }
+    }
+
     try {
-      if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) return;
       await service.rpc('geo_cache_put_v1', {
         p_cache_key: cacheKey,
         p_provider_code: provider,
         p_capability: capability,
         p_response: responseJson,
-        p_ttl_seconds: Math.max(60, Math.min(60 * 60 * 24 * 7, Math.trunc(ttlSeconds))),
+        p_ttl_seconds: ttl,
       });
     } catch {
       // ignore
