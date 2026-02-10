@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { aiGatewayStream } from '../lib/aiGatewayStream';
 import { getMyAppContext } from '../lib/profile';
+import { supabase } from '../lib/supabaseClient';
 
 type Msg = { id: string; role: 'user' | 'assistant'; text: string };
 
@@ -26,7 +27,7 @@ export default function CopilotWidget() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const { data } = await (await import('../lib/supabaseClient')).supabase.auth.getSession();
+      const { data } = await supabase.auth.getSession();
       if (!alive) return;
       setUid(data.session?.user.id ?? null);
     })();

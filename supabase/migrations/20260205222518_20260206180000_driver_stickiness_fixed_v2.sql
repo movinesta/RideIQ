@@ -388,7 +388,8 @@ grant all on table public.driver_coaching_tips to service_role;
 grant all on table public.earnings_coach_sessions to service_role;
 
 -- Driver Stats View for Earnings Coach
-create or replace view public.driver_stats as
+drop view if exists public.driver_stats;
+create view public.driver_stats with (security_invoker='true') as
 select
   driver_id,
   count(*) as total_trips,

@@ -10,6 +10,7 @@ playwright-report/
 # Env
 .env
 .env.*
+!.env.example
 
 # Logs
 npm-debug.log*
