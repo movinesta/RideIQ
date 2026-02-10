@@ -2,6 +2,7 @@ import { Redis as IORedis } from 'npm:ioredis@5.6.1';
 import { envTrim } from './config.ts';
 
 let client: IORedis | null = null;
+let connectPromise: Promise<void> | null = null;
 
 function isPositiveInt(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v) && v > 0;
@@ -24,6 +25,7 @@ function getClient(): IORedis {
 
   // Prefer fail-fast behavior. Callers should fall back to Postgres/provider on any Redis issue.
   client = new IORedis(url, {
+    lazyConnect: true,
     enableOfflineQueue: false,
     maxRetriesPerRequest: 1,
     connectTimeout: 2000,
@@ -39,9 +41,22 @@ function getClient(): IORedis {
   return client;
 }
 
+async function ensureConnected(c: IORedis): Promise<void> {
+  if (c.status === 'ready') return;
+
+  // ioredis will throw "Stream isn't writeable" when enableOfflineQueue=false unless we wait for connect().
+  if (!connectPromise) {
+    connectPromise = c.connect().finally(() => {
+      connectPromise = null;
+    });
+  }
+  await connectPromise;
+}
+
 async function withClient<T>(fn: (c: IORedis) => Promise<T>): Promise<T> {
   const c = getClient();
   try {
+    await ensureConnected(c);
     return await fn(c);
   } catch (err) {
     // Reset so next request can attempt a fresh connection.
@@ -51,6 +66,7 @@ async function withClient<T>(fn: (c: IORedis) => Promise<T>): Promise<T> {
       // ignore
     }
     client = null;
+    connectPromise = null;
     throw err;
   }
 }

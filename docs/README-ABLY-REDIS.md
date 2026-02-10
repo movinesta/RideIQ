@@ -32,8 +32,10 @@ Redis key format:
 - `geo:v1:<cacheKey>`
 
 Edge env vars:
-- `REDIS_URL=rediss://default:<password>@<host>:<port>`
+- Prefer TLS when available:
+  - `REDIS_URL=rediss://default:<password>@<host>:<tlsPort>`
+- If your Redis endpoint only supports plaintext on the given port, use:
+  - `REDIS_URL=redis://default:<password>@<host>:<port>`
 
 Failure mode:
 - If Redis is not configured or unavailable, `supabase/functions/geo` falls back to `geo_cache_get_v1` / `geo_cache_put_v1`.
-

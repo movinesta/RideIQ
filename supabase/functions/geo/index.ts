@@ -269,8 +269,8 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
     const redisKey = `geo:v1:${cacheKey}`;
     if (isRedisConfigured()) {
       try {
-        const cached = await redisGetJson<any>(redisKey);
-        if (cached != null) return cached;
+        // If Redis is configured and reachable, do not fall back to Postgres on misses.
+        return (await redisGetJson<any>(redisKey)) ?? null;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         ctx.warn('geo.cache.redis_get_failed', { error: msg });
