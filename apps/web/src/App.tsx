@@ -77,6 +77,17 @@ function RoleGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AdminDashboardRedirect() {
+  React.useEffect(() => {
+    const base = import.meta.env.BASE_URL || '/';
+    const normalizedBase = base.endsWith('/') ? base : `${base}/`;
+    const target = `${normalizedBase}admin_dashboard/`;
+    window.location.replace(target);
+  }, []);
+
+  return <div className="p-6">Redirecting to admin dashboard…</div>;
+}
+
 function ProtectedApp() {
   return (
     <AuthGate>
@@ -116,6 +127,7 @@ function ProtectedApp() {
             <Route path="/merchant-chat/:threadId" element={<MerchantChatPage />} />
             <Route path="/voice-call/:callId" element={<VoiceCallPage />} />
             <Route path="/admin/payments" element={<AdminPaymentsPage />} />
+            <Route path="/admin" element={<AdminDashboardRedirect />} />
             <Route path="/admin/settlements" element={<AdminSettlementsPage />} />
             <Route path="/admin/agents" element={<AdminAgentsPage />} />
             <Route path="/admin/commissions" element={<AdminCommissionsPage />} />
