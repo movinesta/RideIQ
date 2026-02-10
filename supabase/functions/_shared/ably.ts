@@ -29,6 +29,30 @@ function extractKeyName(apiKey: string): string {
   return apiKey.split(':')[0] ?? '';
 }
 
+function makeNonce(): string {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi?.randomUUID) {
+    try {
+      return cryptoApi.randomUUID().replace(/-/g, '');
+    } catch {
+      // fall through
+    }
+  }
+
+  if (cryptoApi?.getRandomValues) {
+    try {
+      const bytes = new Uint8Array(16);
+      cryptoApi.getRandomValues(bytes);
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    } catch {
+      // fall through
+    }
+  }
+
+  // Last resort: non-crypto nonce (still better than omitting).
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+}
+
 export async function ablyPublish(
   channel: string,
   name: string,
@@ -80,9 +104,12 @@ export async function ablyRequestToken(params: {
       accept: 'application/json',
     },
     body: JSON.stringify({
+      keyName,
       clientId: params.clientId,
       ttl: Math.max(1, Math.trunc(params.ttlMs)),
       capability: JSON.stringify(cap),
+      timestamp: Date.now(),
+      nonce: makeNonce(),
     }),
   });
 
