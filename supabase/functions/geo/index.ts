@@ -21,9 +21,16 @@ import {
 import type { Capability, LatLng, ProviderCode } from '../_shared/geo/types.ts';
 
 type Action = 'route' | 'geocode' | 'reverse' | 'matrix';
+type CacheBackend = 'off' | 'redis' | 'supabase';
 
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
+}
+
+function resolveCacheBackend(defaults: any): CacheBackend {
+  const raw = typeof defaults?.cache_backend === 'string' ? String(defaults.cache_backend).trim().toLowerCase() : '';
+  if (raw === 'off' || raw === 'redis' || raw === 'supabase') return raw as CacheBackend;
+  return Boolean(defaults?.cache_enabled) ? 'redis' : 'off';
 }
 
 function validateLatLng(v: any): LatLng | null {
@@ -265,18 +272,26 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
     }
   }
 
-  async function cacheGet(cacheKey: string) {
-    const redisKey = `geo:v1:${cacheKey}`;
-    if (isRedisConfigured()) {
-      try {
-        // If Redis is configured and reachable, do not fall back to Postgres on misses.
-        return (await redisGetJson<any>(redisKey)) ?? null;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        ctx.warn('geo.cache.redis_get_failed', { error: msg });
-        // fall through to Postgres fallback
+  async function cacheGet(cacheKey: string, backend: CacheBackend) {
+    if (backend === 'off') return null;
+
+    if (backend === 'redis') {
+      const redisKey = `geo:v1:${cacheKey}`;
+      if (isRedisConfigured()) {
+        try {
+          // If Redis is configured and reachable, do not fall back to Postgres on misses.
+          const hit = await redisGetJson<any>(redisKey);
+          if (hit != null) return hit;
+          return null;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          ctx.warn('geo.cache.redis_get_failed', { error: msg });
+          // fall through to Postgres fallback
+        }
       }
+      // fall through to Postgres fallback when Redis is not configured.
     }
+
     try {
       const { data, error } = await service.rpc('geo_cache_get_v1', { p_cache_key: cacheKey });
       if (error) return null;
@@ -286,20 +301,30 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
     }
   }
 
-  async function cachePut(cacheKey: string, provider: ProviderCode, responseJson: unknown, ttlSeconds: number) {
+  async function cachePut(
+    cacheKey: string,
+    provider: ProviderCode,
+    responseJson: unknown,
+    ttlSeconds: number,
+    backend: CacheBackend,
+  ) {
+    if (backend === 'off') return;
     if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) return;
     const ttl = Math.max(60, Math.min(60 * 60 * 24 * 7, Math.trunc(ttlSeconds)));
 
-    const redisKey = `geo:v1:${cacheKey}`;
-    if (isRedisConfigured()) {
-      try {
-        await redisSetJson(redisKey, responseJson, ttl);
-        return;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        ctx.warn('geo.cache.redis_set_failed', { error: msg });
-        // fall through to Postgres fallback
+    if (backend === 'redis') {
+      const redisKey = `geo:v1:${cacheKey}`;
+      if (isRedisConfigured()) {
+        try {
+          await redisSetJson(redisKey, responseJson, ttl);
+          return;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          ctx.warn('geo.cache.redis_set_failed', { error: msg });
+          // fall through to Postgres fallback
+        }
       }
+      // fall through to Postgres fallback when Redis is not configured.
     }
 
     try {
@@ -396,7 +421,9 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
     const region = clampRegion(body?.region ?? defaults?.region ?? 'IQ');
 
     // Persistent caching is OFF by default. Enable per-provider via Admin, and keep TTL conservative.
-    const cacheEnabled = Boolean(defaults?.cache_enabled) && isFiniteNumber(defaults?.cache_ttl_seconds) && defaults.cache_ttl_seconds > 0;
+    const cacheBackend = resolveCacheBackend(defaults);
+    const cacheEnabled =
+      cacheBackend !== 'off' && isFiniteNumber(defaults?.cache_ttl_seconds) && defaults.cache_ttl_seconds > 0;
     const cacheTtlSeconds = cacheEnabled ? Math.min(Math.max(60, Math.trunc(defaults!.cache_ttl_seconds!)), 60 * 60 * 24 * 7) : 0;
 
     const t0 = Date.now();
@@ -435,7 +462,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
           alternatives,
         });
         if (cacheEnabled && !cacheBypass) {
-          const cached = await cacheGet(cacheKey);
+          const cached = await cacheGet(cacheKey, cacheBackend);
           if (cached) {
             await logAttempt({
               provider,
@@ -515,7 +542,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
 
         const latencyMs = Date.now() - t0;
         if (cacheEnabled && !cacheBypass) {
-          await cachePut(cacheKey, provider, normalized, cacheTtlSeconds);
+          await cachePut(cacheKey, provider, normalized, cacheTtlSeconds, cacheBackend);
         }
         await logAttempt({
           provider,
@@ -542,7 +569,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
 
         const cacheKey = await makeCacheKey({ v: 1, action, capability, provider, query, language, region, limit });
         if (cacheEnabled && !cacheBypass) {
-          const cached = await cacheGet(cacheKey);
+          const cached = await cacheGet(cacheKey, cacheBackend);
           if (cached) {
             await logAttempt({
               provider,
@@ -601,7 +628,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
 
         const latencyMs = Date.now() - t0;
         if (cacheEnabled && !cacheBypass) {
-          await cachePut(cacheKey, provider, normalized, cacheTtlSeconds);
+          await cachePut(cacheKey, provider, normalized, cacheTtlSeconds, cacheBackend);
         }
         await logAttempt({
           provider,
@@ -625,7 +652,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
 
         const cacheKey = await makeCacheKey({ v: 1, action, capability, provider, at, language, region, limit });
         if (cacheEnabled && !cacheBypass) {
-          const cached = await cacheGet(cacheKey);
+          const cached = await cacheGet(cacheKey, cacheBackend);
           if (cached) {
             await logAttempt({
               provider,
@@ -677,7 +704,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
 
         const latencyMs = Date.now() - t0;
         if (cacheEnabled && !cacheBypass) {
-          await cachePut(cacheKey, provider, normalized, cacheTtlSeconds);
+          await cachePut(cacheKey, provider, normalized, cacheTtlSeconds, cacheBackend);
         }
         await logAttempt({
           provider,
@@ -703,7 +730,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
 
         const cacheKey = await makeCacheKey({ v: 1, action, capability, provider, origins, destinations, language, region });
         if (cacheEnabled && !cacheBypass) {
-          const cached = await cacheGet(cacheKey);
+          const cached = await cacheGet(cacheKey, cacheBackend);
           if (cached) {
             await logAttempt({
               provider,
@@ -767,7 +794,7 @@ export default Deno.serve((req: Request) => withRequestContext('geo', req, async
 
         const latencyMs = Date.now() - t0;
         if (cacheEnabled && !cacheBypass) {
-          await cachePut(cacheKey, provider, normalized, cacheTtlSeconds);
+          await cachePut(cacheKey, provider, normalized, cacheTtlSeconds, cacheBackend);
         }
         await logAttempt({
           provider,
