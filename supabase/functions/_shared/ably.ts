@@ -94,23 +94,23 @@ export async function ablyRequestToken(params: {
   const cap: Record<string, string[]> = {};
   for (const ch of params.channels) cap[ch] = ['subscribe'];
 
+  // Prefer the simple Basic Auth flow here: supply a minimal token request payload and let Ably
+  // generate and sign the TokenRequest server-side. (Avoids mac/timestamp/nonce edge cases.)
+  const body = new URLSearchParams();
+  body.set('clientId', params.clientId);
+  body.set('ttl', String(Math.max(1, Math.trunc(params.ttlMs))));
+  body.set('capability', JSON.stringify(cap));
+
   const url = `${ABLY_BASE_URL}/keys/${encodeURIComponent(keyName)}/requestToken`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: ablyAuthHeader(apiKey),
       'x-ably-version': '1.2',
-      'content-type': 'application/json',
+      'content-type': 'application/x-www-form-urlencoded',
       accept: 'application/json',
     },
-    body: JSON.stringify({
-      keyName,
-      clientId: params.clientId,
-      ttl: Math.max(1, Math.trunc(params.ttlMs)),
-      capability: JSON.stringify(cap),
-      timestamp: Date.now(),
-      nonce: makeNonce(),
-    }),
+    body: body.toString(),
   });
 
   if (!res.ok) {
