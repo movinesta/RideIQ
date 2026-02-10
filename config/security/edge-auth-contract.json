@@ -1,6 +1,9 @@
 {
   "description": "Auth model for Supabase Edge Functions. Used by scripts/audit-edge-functions.mjs to enforce verify_jwt=false guards and warn about verify_jwt policy drift.",
   "functions": {
+    "ably-token": {
+      "auth": "user_jwt"
+    },
     "admin-api": {
       "auth": "user_jwt"
     },

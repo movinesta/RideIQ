@@ -2,6 +2,10 @@
   "version": 2,
   "description": "Edge Function Supabase key requirements and justifications. Enforced by scripts/audit-function-key-requirements.mjs.",
   "functions": {
+    "ably-token": {
+      "key": "anon",
+      "reason": "User-scoped endpoint that issues short-lived Ably tokens scoped to nearby invalidation channels (subscribe-only). Uses publishable key + user JWT via requireUser()."
+    },
     "achievement-claim": {
       "key": "anon",
       "reason": "User-scoped endpoint using publishable key with RLS and user JWT."
