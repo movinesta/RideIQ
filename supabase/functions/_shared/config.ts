@@ -55,9 +55,3 @@ export function requireSupabaseSecret(): { url: string; key: string } {
   }
   return { url: SUPABASE_URL, key: SUPABASE_SECRET_KEY };
 }
-
-if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY || !SUPABASE_SECRET_KEY) {
-  console.warn(
-    '[config] Missing one or more required env vars: SUPABASE_URL, SUPABASE_ANON_KEY (or SUPABASE_PUBLISHABLE_KEY), SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SECRET_KEY)'
-  );
-}

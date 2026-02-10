@@ -22,7 +22,20 @@ function readText(p) {
 
 function walk(dir, out = []) {
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (ent.name === 'node_modules' || ent.name === '.supabase' || ent.name === 'dist' || ent.name === 'build') continue;
+    // Ignore build artifacts and dependency trees. This audit should only scan source files.
+    if (
+      ent.name === 'node_modules' ||
+      ent.name === '.supabase' ||
+      ent.name === 'dist' ||
+      ent.name === 'build' ||
+      ent.name === '.next' ||
+      ent.name === '.swc' ||
+      ent.name === '.turbo' ||
+      ent.name === 'coverage' ||
+      ent.name === 'playwright-report'
+    ) {
+      continue;
+    }
     const p = path.join(dir, ent.name);
     if (ent.isDirectory()) walk(p, out);
     else out.push(p);

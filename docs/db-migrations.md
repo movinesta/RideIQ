@@ -148,8 +148,8 @@ Before merging a DB change:
 
 Baseline migrations are checked in:
 
-- `20260206000000_extensions.sql` — creates the `extensions` schema and enables required extensions.
-- `20260206001000_public_schema.sql` — baseline for the application's `public` schema (types, tables, functions, policies, grants, triggers).
+- `20260201000000_extensions.sql` — creates the `extensions` schema and enables required extensions.
+- `20260201001000_public_schema.sql` — baseline for the application's `public` schema (types, tables, functions, policies, grants, triggers).
 - `20260206004000_storage_buckets_and_policies.sql` — seeds required Storage buckets and defines Storage RLS policies (avatars, chat media, driver docs, KYC).
 
 Follow-up changes should be introduced as additional timestamped migrations; avoid editing the baseline files unless you are intentionally regenerating them.

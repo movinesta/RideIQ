@@ -1,4 +1,6 @@
 import type { NextConfig } from 'next';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const isProd = process.env.NODE_ENV === 'production';
 const allowedOrigins = (process.env.ADMIN_ALLOWED_ORIGINS ?? '')
@@ -6,9 +8,16 @@ const allowedOrigins = (process.env.ADMIN_ALLOWED_ORIGINS ?? '')
   .map((s) => s.trim())
   .filter(Boolean);
 
+// Prevent Next/Turbopack from inferring the workspace root based on unrelated lockfiles
+// outside this repo (a common monorepo footgun on developer machines).
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  turbopack: {
+    root: repoRoot,
+  },
   ...(allowedOrigins.length
     ? {
         // Server Actions are invoked via POST and rely on Origin checks.

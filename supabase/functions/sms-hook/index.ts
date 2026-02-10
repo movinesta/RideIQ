@@ -72,7 +72,8 @@ Deno.serve((req) => withRequestContext('sms-hook', req, async (ctx) => {
   const bodyText = await req.text();
 
   // Verify signature if configured
-  const hookSecret = envTrim('AUTH_HOOK_SECRET');
+  // Prefer AUTH_HOOK_SECRET, but allow the more explicit legacy/alt name too.
+  const hookSecret = envTrim('AUTH_HOOK_SECRET') || envTrim('AUTH_HOOK_SEND_SMS_SECRET');
   if (hookSecret) {
     try {
       const wh = new Webhook(decodeWebhookSecret(hookSecret));
@@ -81,7 +82,9 @@ Deno.serve((req) => withRequestContext('sms-hook', req, async (ctx) => {
       return errorJson(`Invalid webhook signature`, 401, 'WEBHOOK_SIGNATURE');
     }
   } else {
-    console.warn('[sms-hook] AUTH_HOOK_SECRET is not set; signature verification is disabled.');
+    console.warn(
+      '[sms-hook] AUTH_HOOK_SECRET (or AUTH_HOOK_SEND_SMS_SECRET) is not set; signature verification is disabled.'
+    );
   }
 
   let payload: SendSmsHookEvent;

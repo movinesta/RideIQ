@@ -42,7 +42,7 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
-      - name: Schema ↔ code contract check
+      - name: Schema <-> code contract check
         run: pnpm run schema:check
 
       - name: Ensure DB hardening migration is in sync with RPC allowlist

@@ -47,7 +47,9 @@ const MIGRATION_REFRESH_PATH = path.join(
 const SECURITY_TEST_PATH = path.join(ROOT, 'supabase', 'tests', '005_security_hardening.test.sql');
 
 function readText(p) {
-  return fs.readFileSync(p, 'utf8');
+  // Normalize line endings so `--check` behaves consistently on Windows clones
+  // where Git may check out text files with CRLF (core.autocrlf).
+  return fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
 }
 
 function loadAllowlist() {

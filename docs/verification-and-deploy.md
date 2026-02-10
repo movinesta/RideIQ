@@ -46,6 +46,9 @@ This runs (at a minimum): typecheck, lint, tests (web), schema contract check, a
 ### 3.1 Start local Supabase
 
 ```bash
+# Required if auth.hook.send_sms is enabled in supabase/config.toml.
+# Format: v1,whsec_<base64_encoded_secret>
+export AUTH_HOOK_SECRET="v1,whsec_..."
 supabase start
 ```
 
