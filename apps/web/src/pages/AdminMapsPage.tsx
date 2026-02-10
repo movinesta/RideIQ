@@ -8,6 +8,7 @@ import { errorText } from '../lib/errors';
 import { supabase } from '../lib/supabaseClient';
 
 type ProviderCode = 'google' | 'mapbox' | 'here' | 'thunderforest' | 'ors';
+type CacheBackend = 'off' | 'redis' | 'supabase';
 
 type ProviderRow = {
   provider_code: ProviderCode;
@@ -17,7 +18,7 @@ type ProviderRow = {
   region: string;
   monthly_soft_cap_units: number | null;
   monthly_hard_cap_units: number | null;
-  cache_enabled: boolean;
+  cache_backend: CacheBackend;
   cache_ttl_seconds: number | null;
   note: string | null;
   mtd_render: number;
@@ -102,7 +103,7 @@ type LiveDriverRow = {
 };
 
 async function fetchProviders(): Promise<ProviderRow[]> {
-  const { data, error } = await supabase.rpc('admin_maps_provider_list_v2');
+  const { data, error } = await supabase.rpc('admin_maps_provider_list_v3');
   if (error) throw error;
   return (Array.isArray(data) ? data : []) as ProviderRow[];
 }
@@ -146,6 +147,12 @@ async function fetchRequestStats(): Promise<RequestStatsRow[]> {
   const { data, error } = await supabase.rpc('admin_maps_requests_stats_v1');
   if (error) throw error;
   return (Array.isArray(data) ? data : []) as RequestStatsRow[];
+}
+
+function normalizeCacheBackend(v: unknown): CacheBackend {
+  const s = typeof v === 'string' ? v.trim().toLowerCase() : '';
+  if (s === 'off' || s === 'redis' || s === 'supabase') return s as CacheBackend;
+  return 'off';
 }
 
 function numOrNull(v: string): number | null {
@@ -337,6 +344,7 @@ export default function AdminMapsPage() {
   const setMut = useMutation({
     mutationFn: async (p: ProviderRow) => {
       const d = draft[p.provider_code] ?? {};
+      const cacheBackend = normalizeCacheBackend(d.cache_backend ?? p.cache_backend ?? 'off');
       const payload = {
         p_provider_code: p.provider_code,
         p_priority: Number(d.priority ?? p.priority),
@@ -345,12 +353,12 @@ export default function AdminMapsPage() {
         p_region: String(d.region ?? p.region ?? 'IQ'),
         p_monthly_soft_cap_units: (d.monthly_soft_cap_units ?? p.monthly_soft_cap_units) as number | null,
         p_monthly_hard_cap_units: (d.monthly_hard_cap_units ?? p.monthly_hard_cap_units) as number | null,
-        p_cache_enabled: Boolean(d.cache_enabled ?? p.cache_enabled ?? false),
-        p_cache_ttl_seconds: (d.cache_ttl_seconds ?? p.cache_ttl_seconds ?? null) as number | null,
+        p_cache_backend: cacheBackend,
+        p_cache_ttl_seconds: (cacheBackend === 'off' ? null : (d.cache_ttl_seconds ?? p.cache_ttl_seconds ?? null)) as number | null,
         p_note: (d.note ?? p.note ?? null) as string | null,
       };
 
-      const { error } = await supabase.rpc('admin_maps_provider_set_v2', payload);
+      const { error } = await supabase.rpc('admin_maps_provider_set_v3', payload);
       if (error) throw error;
     },
     onSuccess: async () => {
@@ -599,7 +607,7 @@ export default function AdminMapsPage() {
                     <th className="py-2 pr-4">Region</th>
                     <th className="py-2 pr-4">Soft cap</th>
                     <th className="py-2 pr-4">Hard cap</th>
-                    <th className="py-2 pr-4">Cache</th>
+                    <th className="py-2 pr-4">Cache backend</th>
                     <th className="py-2 pr-4">Cache TTL (s)</th>
                     <th className="py-2 pr-4">MTD render</th>
                     <th className="py-2 pr-4">MTD directions</th>
@@ -620,7 +628,7 @@ export default function AdminMapsPage() {
                     const region = String(d.region ?? r.region ?? 'IQ');
                     const soft = d.monthly_soft_cap_units ?? r.monthly_soft_cap_units;
                     const hard = d.monthly_hard_cap_units ?? r.monthly_hard_cap_units;
-                    const cacheEnabled = Boolean(d.cache_enabled ?? r.cache_enabled ?? false);
+                    const cacheBackend = normalizeCacheBackend(d.cache_backend ?? r.cache_backend ?? 'off');
                     const cacheTtl = (d.cache_ttl_seconds ?? r.cache_ttl_seconds ?? null) as number | null;
                     const mtd = r.mtd_render ?? 0;
                     const dirty = Object.keys(d).length > 0;
@@ -678,22 +686,22 @@ export default function AdminMapsPage() {
                           />
                         </td>
                         <td className="py-3 pr-4">
-                          <label className="inline-flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={cacheEnabled}
-                              onChange={(e) => updateDraft(r.provider_code, { cache_enabled: e.target.checked })}
-                            />
-                            <span className={cacheEnabled ? 'text-green-700' : 'text-gray-500'}>
-                              {cacheEnabled ? 'On' : 'Off'}
-                            </span>
-                          </label>
+                          <select
+                            className="w-32 rounded-md border px-2 py-1"
+                            value={cacheBackend}
+                            onChange={(e) => updateDraft(r.provider_code, { cache_backend: e.target.value as CacheBackend })}
+                          >
+                            <option value="off">Off</option>
+                            <option value="redis">Redis</option>
+                            <option value="supabase">Supabase</option>
+                          </select>
                         </td>
                         <td className="py-3 pr-4">
                           <input
                             className="w-28 rounded-md border px-2 py-1"
-                            value={cacheTtl === null || cacheTtl === undefined ? '' : String(cacheTtl)}
-                            placeholder="(disabled)"
+                            disabled={cacheBackend === 'off'}
+                            value={cacheBackend === 'off' ? '' : (cacheTtl === null || cacheTtl === undefined ? '' : String(cacheTtl))}
+                            placeholder={cacheBackend === 'off' ? '(off)' : '(seconds)'}
                             onChange={(e) => updateDraft(r.provider_code, { cache_ttl_seconds: numOrNull(e.target.value) })}
                           />
                         </td>

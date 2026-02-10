@@ -9,6 +9,7 @@ import { tryWaitUntil } from '../_shared/background.ts';
 import { storeProviderEvent } from '../_shared/providerEvents.ts';
 import { isProduction } from '../_shared/env.ts';
 import { requireFreshWebhookTimestamp } from '../_shared/webhookReplay.ts';
+import { claimWebhookIdempotency, markWebhookIdempotencyDone, releaseWebhookIdempotencyClaim } from '../_shared/webhookIdempotency.ts';
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -79,10 +80,24 @@ Deno.serve(async (req) => {
       const stableEventId = eventId || (await shaHex('SHA-256', token));
       const providerEventId = `payout:${stableEventId}`;
 
-      // Durable inbox (idempotent). Store only after token verification.
-      const stored = await storeProviderEvent(service, 'zaincash', providerEventId, { claims, raw: body });
+      // Redis idempotency gate (fast prefilter before hitting Postgres).
+      const claim = await claimWebhookIdempotency({ providerCode: 'zaincash', providerEventId });
+      if (claim.kind === 'duplicate') {
+        emitMetricBestEffort(ctx, { event_type: 'metric.webhook.duplicate_short_circuit', level: 'warn', payload: { provider_code: 'zaincash', kind: 'withdraw' } });
+        return json({ ok: true, accepted: true, queued: false, duplicate: true, short_circuited: true, event_id: stableEventId || null }, 200, ctx.headers);
+      }
+
+      let stored: Awaited<ReturnType<typeof storeProviderEvent>>;
+      try {
+        // Durable inbox (idempotent). Store only after token verification.
+        stored = await storeProviderEvent(service, 'zaincash', providerEventId, { claims, raw: body });
+      } catch (e) {
+        if (claim.kind === 'claimed') await releaseWebhookIdempotencyClaim(claim);
+        throw e;
+      }
 
       if (!withdrawId || !isUuid(withdrawId)) {
+        if (claim.kind === 'claimed') await releaseWebhookIdempotencyClaim(claim);
         emitMetricBestEffort(ctx, { event_type: 'metric.webhook.ignored', payload: { provider_code: 'zaincash', kind: 'withdraw', reason: 'missing_or_invalid_externalReferenceId' } });
         return json({ ok: true, ignored: true, reason: 'missing_or_invalid_externalReferenceId', event_id: stableEventId || null }, 200, ctx.headers);
       }
@@ -92,13 +107,22 @@ Deno.serve(async (req) => {
       }
 
       // Queue async processing (retries/backoff handled by the worker).
-      const { queued } = await enqueueWebhookJob(service, {
-        providerCode: 'zaincash',
-        providerEventId: providerEventId,
-        providerEventPk: stored.id,
-        jobKind: 'withdraw_webhook',
-        correlationId: withdrawId,
-      });
+      let queued = false;
+      try {
+        const out = await enqueueWebhookJob(service, {
+          providerCode: 'zaincash',
+          providerEventId: providerEventId,
+          providerEventPk: stored.id,
+          jobKind: 'withdraw_webhook',
+          correlationId: withdrawId,
+        });
+        queued = Boolean((out as any)?.queued);
+      } catch (e) {
+        if (claim.kind === 'claimed') await releaseWebhookIdempotencyClaim(claim);
+        throw e;
+      }
+
+      if (claim.kind === 'claimed') await markWebhookIdempotencyDone(claim);
 
       // Optional best-effort immediate processing.
       const scheduled = tryWaitUntil(runWebhookJobs(service, { limit: 1, hardMax: 1 }));

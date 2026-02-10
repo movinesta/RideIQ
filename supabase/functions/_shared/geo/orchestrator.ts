@@ -29,6 +29,7 @@ export async function getProviderDefaults(
       language: string;
       region: string;
       enabled: boolean;
+      cache_backend: 'off' | 'redis' | 'supabase' | null;
       cache_enabled: boolean;
       cache_ttl_seconds: number | null;
     }
@@ -36,15 +37,24 @@ export async function getProviderDefaults(
 > {
   const { data, error } = await supabase
     .from('maps_providers')
-    .select('language, region, enabled, cache_enabled, cache_ttl_seconds')
+    .select('language, region, enabled, cache_backend, cache_enabled, cache_ttl_seconds')
     .eq('provider_code', provider)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
+
+  const rawBackend =
+    typeof (data as any).cache_backend === 'string' ? String((data as any).cache_backend).trim().toLowerCase() : '';
+  const cache_backend =
+    rawBackend === 'off' || rawBackend === 'redis' || rawBackend === 'supabase'
+      ? (rawBackend as 'off' | 'redis' | 'supabase')
+      : null;
+
   return {
     language: (data as any).language ?? 'ar',
     region: (data as any).region ?? 'IQ',
     enabled: Boolean((data as any).enabled),
+    cache_backend,
     cache_enabled: Boolean((data as any).cache_enabled),
     cache_ttl_seconds:
       typeof (data as any).cache_ttl_seconds === 'number' && Number.isFinite((data as any).cache_ttl_seconds)
