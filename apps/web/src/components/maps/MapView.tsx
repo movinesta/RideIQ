@@ -1065,7 +1065,7 @@ async function initAdapter(args: {
       let adapter: MapAdapter;
 
       if (provider === 'google') {
-        await loadGoogleMapsWithConfig(cfg, ['places']);
+        await loadGoogleMapsWithConfig(cfg);
         adapter = createGoogleAdapter(container, cfg, { center: args.initialCenter, zoom: args.initialZoom });
       } else if (provider === 'mapbox') {
         adapter = await createMapboxAdapter(container, cfg, { center: args.initialCenter, zoom: args.initialZoom });

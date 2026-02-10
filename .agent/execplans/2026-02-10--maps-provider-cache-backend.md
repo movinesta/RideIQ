@@ -11,7 +11,9 @@ Today `public.maps_providers.cache_enabled` is a boolean. When enabled, the `geo
   - `off`
   - `redis`
   - `supabase` (Postgres `geo_cache_*` RPCs)
-- Keep TTL behavior unchanged: cache only when TTL > 0.
+- Enforce a single consistent cache invariant:
+  - If backend = `off` → `cache_enabled=false` and `cache_ttl_seconds=NULL`.
+  - If backend ≠ `off` → `cache_enabled=true` and `cache_ttl_seconds` is required and bounded (`60..604800`).
 - Keep the system fail-open: if Redis is unavailable, requests still succeed using Postgres cache and/or upstream calls.
 - Keep backwards compatibility for existing RPCs/UI by retaining `cache_enabled` and mapping it to a default backend (`redis`).
 
@@ -22,13 +24,16 @@ Today `public.maps_providers.cache_enabled` is a boolean. When enabled, the `geo
 
 ## Proposed Design
 - DB:
-  - Add `maps_providers.cache_backend text not null default 'off'` with a CHECK constraint (`off|redis|supabase`).
+  - Add `maps_providers.cache_backend` as `public.maps_cache_backend` enum (`off|redis|supabase`).
   - Backfill existing `cache_enabled=true` rows to `cache_backend='redis'`.
   - Add new admin RPCs:
     - `admin_maps_provider_list_v3()` returns `cache_backend`.
     - `admin_maps_provider_set_v3(..., p_cache_backend, p_cache_ttl_seconds, ...)`.
   - Keep v2 RPCs:
     - v2 list stays stable; v2 set maps `cache_enabled=true` to `cache_backend='redis'`.
+  - Prevent drift with:
+    - RPC-level validation (friendly errors)
+    - Table CHECK constraint (`maps_providers_cache_backend_ttl_chk`) for direct writes.
 - Edge:
   - `getProviderDefaults()` reads `cache_backend` and falls back to legacy `cache_enabled`.
   - `geo/index.ts` routes cache reads/writes based on backend:
@@ -65,4 +70,3 @@ Rollback: revert UI to v2 RPCs and keep `cache_enabled` behavior; `cache_backend
 - [ ] Admin UI supports backend selection
 - [ ] RPC allowlist updated + hardening regenerated
 - [ ] Deployed to Supabase + pushed to GitHub
-

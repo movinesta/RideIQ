@@ -254,24 +254,50 @@ Deno.serve(async (req) => {
     const language = providerRow?.language || 'ar';
     const region = providerRow?.region || 'IQ';
 
-    // Compute fallback order, filtered to supported providers and configured keys.
-    const { data: orderRows, error: orderErr } = await supabase
-      .from('maps_providers')
-      .select('provider_code,priority,enabled')
-      .eq('enabled', true)
-      .order('priority', { ascending: false });
+    // Compute fallback order (capability-aware), filtered to supported providers and configured keys.
+    const { data: capRows, error: capErr } = await supabase
+      .from('maps_provider_capabilities')
+      .select('provider_code')
+      .eq('capability', capability)
+      .eq('enabled', true);
 
-    if (orderErr) {
+    if (capErr) {
       return errorJson(
         'failed_to_load_provider_order',
         500,
         'failed_to_load_provider_order',
-        { details: orderErr.message },
+        { details: capErr.message },
         corsHeaders,
       );
     }
 
-    const fallback_order = (orderRows || [])
+    const capabilityProviders = (capRows || [])
+      .map((r) => String((r as any).provider_code) as ProviderCode)
+      .filter((p) => ALL_PROVIDERS.includes(p));
+
+    let orderRows: Array<{ provider_code: ProviderCode }> = [];
+    if (capabilityProviders.length) {
+      const { data: rows, error: orderErr } = await supabase
+        .from('maps_providers')
+        .select('provider_code,priority,enabled')
+        .in('provider_code', capabilityProviders)
+        .eq('enabled', true)
+        .order('priority', { ascending: false });
+
+      if (orderErr) {
+        return errorJson(
+          'failed_to_load_provider_order',
+          500,
+          'failed_to_load_provider_order',
+          { details: orderErr.message },
+          corsHeaders,
+        );
+      }
+
+      orderRows = (rows || []) as Array<{ provider_code: ProviderCode }>;
+    }
+
+    const fallback_order = orderRows
       .map((r) => r.provider_code as ProviderCode)
       .filter((p) => p !== selected)
       .filter((p) => supportedSet.has(p))

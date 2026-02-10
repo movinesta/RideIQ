@@ -26,7 +26,7 @@ If you want a different behavior, discuss with counsel and re-evaluate complianc
 
 ### Database
 
-- `maps_providers`, `maps_provider_capabilities`, `maps_usage_monthly` — provider config + quotas.
+- `maps_providers`, `maps_provider_capabilities`, `maps_usage_daily` — provider config + quotas (daily rows aggregated month-to-date).
 - `maps_requests_log` — immutable request log for routing/geocoding/matrix (used by Admin UI).
 - `geo_cache` — short-lived normalized cache to reduce redundant provider calls.
 

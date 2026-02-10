@@ -17,7 +17,7 @@ function buildUrl(apiKey: string, libraries: string[], language: string, region:
   return `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
 }
 
-export async function loadGoogleMaps(libraries: string[] = ['places']): Promise<void> {
+export async function loadGoogleMaps(libraries: string[] = []): Promise<void> {
   if (typeof window === 'undefined') return;
   if ((window as any).google?.maps) return;
 
@@ -64,7 +64,7 @@ export async function loadGoogleMaps(libraries: string[] = ['places']): Promise<
   return _loaderPromise;
 }
 
-export async function loadGoogleMapsWithConfig(cfg: MapsConfigV2, libraries: string[] = ['places']): Promise<void> {
+export async function loadGoogleMapsWithConfig(cfg: MapsConfigV2, libraries: string[] = []): Promise<void> {
   if (typeof window === 'undefined') return;
   if ((window as any).google?.maps) return;
 

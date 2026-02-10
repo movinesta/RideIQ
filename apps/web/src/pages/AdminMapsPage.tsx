@@ -10,6 +10,9 @@ import { supabase } from '../lib/supabaseClient';
 type ProviderCode = 'google' | 'mapbox' | 'here' | 'thunderforest' | 'ors';
 type CacheBackend = 'off' | 'redis' | 'supabase';
 
+const CACHE_TTL_MIN_SECONDS = 60;
+const CACHE_TTL_MAX_SECONDS = 60 * 60 * 24 * 7; // 7 days
+
 type ProviderRow = {
   provider_code: ProviderCode;
   priority: number;
@@ -167,6 +170,15 @@ function percent(n: number, d: number | null | undefined): string {
   if (!d || d <= 0) return '—';
   const p = Math.max(0, Math.min(100, (n / d) * 100));
   return `${p.toFixed(1)}%`;
+}
+
+function cacheTtlError(cacheBackend: CacheBackend, ttlSeconds: number | null): string | null {
+  if (cacheBackend === 'off') return null;
+  if (ttlSeconds === null) return `TTL required (${CACHE_TTL_MIN_SECONDS}-${CACHE_TTL_MAX_SECONDS}s) when cache is on`;
+  if (ttlSeconds < CACHE_TTL_MIN_SECONDS || ttlSeconds > CACHE_TTL_MAX_SECONDS) {
+    return `TTL must be between ${CACHE_TTL_MIN_SECONDS} and ${CACHE_TTL_MAX_SECONDS} seconds`;
+  }
+  return null;
 }
 
 export default function AdminMapsPage() {
@@ -345,6 +357,11 @@ export default function AdminMapsPage() {
     mutationFn: async (p: ProviderRow) => {
       const d = draft[p.provider_code] ?? {};
       const cacheBackend = normalizeCacheBackend(d.cache_backend ?? p.cache_backend ?? 'off');
+      const ttl = (cacheBackend === 'off' ? null : (d.cache_ttl_seconds ?? p.cache_ttl_seconds ?? null)) as number | null;
+      const ttlErr = cacheTtlError(cacheBackend, ttl);
+      if (ttlErr) {
+        throw new Error(ttl === null ? 'cache_ttl_required' : 'invalid_cache_ttl');
+      }
       const payload = {
         p_provider_code: p.provider_code,
         p_priority: Number(d.priority ?? p.priority),
@@ -354,7 +371,7 @@ export default function AdminMapsPage() {
         p_monthly_soft_cap_units: (d.monthly_soft_cap_units ?? p.monthly_soft_cap_units) as number | null,
         p_monthly_hard_cap_units: (d.monthly_hard_cap_units ?? p.monthly_hard_cap_units) as number | null,
         p_cache_backend: cacheBackend,
-        p_cache_ttl_seconds: (cacheBackend === 'off' ? null : (d.cache_ttl_seconds ?? p.cache_ttl_seconds ?? null)) as number | null,
+        p_cache_ttl_seconds: (cacheBackend === 'off' ? null : ttl) as number | null,
         p_note: (d.note ?? p.note ?? null) as string | null,
       };
 
@@ -630,6 +647,7 @@ export default function AdminMapsPage() {
                     const hard = d.monthly_hard_cap_units ?? r.monthly_hard_cap_units;
                     const cacheBackend = normalizeCacheBackend(d.cache_backend ?? r.cache_backend ?? 'off');
                     const cacheTtl = (d.cache_ttl_seconds ?? r.cache_ttl_seconds ?? null) as number | null;
+                    const cacheTtlErr = cacheTtlError(cacheBackend, cacheTtl);
                     const mtd = r.mtd_render ?? 0;
                     const dirty = Object.keys(d).length > 0;
 
@@ -697,13 +715,18 @@ export default function AdminMapsPage() {
                           </select>
                         </td>
                         <td className="py-3 pr-4">
-                          <input
-                            className="w-28 rounded-md border px-2 py-1"
-                            disabled={cacheBackend === 'off'}
-                            value={cacheBackend === 'off' ? '' : (cacheTtl === null || cacheTtl === undefined ? '' : String(cacheTtl))}
-                            placeholder={cacheBackend === 'off' ? '(off)' : '(seconds)'}
-                            onChange={(e) => updateDraft(r.provider_code, { cache_ttl_seconds: numOrNull(e.target.value) })}
-                          />
+                          <div className="flex flex-col">
+                            <input
+                              className="w-28 rounded-md border px-2 py-1"
+                              disabled={cacheBackend === 'off'}
+                              value={cacheBackend === 'off' ? '' : (cacheTtl === null || cacheTtl === undefined ? '' : String(cacheTtl))}
+                              placeholder={cacheBackend === 'off' ? '(off)' : '(seconds)'}
+                              onChange={(e) => updateDraft(r.provider_code, { cache_ttl_seconds: numOrNull(e.target.value) })}
+                            />
+                            {cacheTtlErr ? (
+                              <div className="mt-1 text-xs text-red-700">{cacheTtlErr}</div>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="py-3 pr-4 tabular-nums">{mtd}</td>
                         <td className="py-3 pr-4 tabular-nums">{r.mtd_directions ?? 0}</td>
@@ -722,7 +745,7 @@ export default function AdminMapsPage() {
                         <td className="py-3 pr-2">
                           <button
                             className={dirty ? 'btn btn-primary' : 'btn'}
-                            disabled={!dirty || setMut.isPending}
+                            disabled={!dirty || setMut.isPending || Boolean(cacheTtlErr)}
                             onClick={() => setMut.mutate(r)}
                           >
                             Save
