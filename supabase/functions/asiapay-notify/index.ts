@@ -9,6 +9,7 @@ import { storeProviderEvent } from '../_shared/providerEvents.ts';
 import { requireFreshWebhookTimestamp } from '../_shared/webhookReplay.ts';
 import { withRequestContext } from '../_shared/requestContext.ts';
 import { emitMetricBestEffort } from '../_shared/metrics.ts';
+import { claimWebhookIdempotency, markWebhookIdempotencyDone, releaseWebhookIdempotencyClaim } from '../_shared/webhookIdempotency.ts';
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -125,20 +126,40 @@ Deno.serve((req) =>
       const providerEventId = `datafeed:${ref}:${payRef || prc || ''}:${successCode || 'unknown'}:${stableBodyHash.slice(0, 12)}`;
       const payload = Object.fromEntries(params.entries());
 
-      // Durable inbox (idempotent).
-      const stored = await storeProviderEvent(service, 'asiapay', providerEventId, payload);
+      // Redis idempotency gate (fast prefilter before hitting Postgres).
+      const claim = await claimWebhookIdempotency({ providerCode: 'asiapay', providerEventId });
+      if (claim.kind === 'duplicate') {
+        emitMetricBestEffort(ctx, { event_type: 'metric.webhook.duplicate_short_circuit', level: 'warn', payload: { provider_code: 'asiapay' } });
+        return okText();
+      }
+
+      let stored: Awaited<ReturnType<typeof storeProviderEvent>>;
+      try {
+        // Durable inbox (idempotent).
+        stored = await storeProviderEvent(service, 'asiapay', providerEventId, payload);
+      } catch (e) {
+        if (claim.kind === 'claimed') await releaseWebhookIdempotencyClaim(claim);
+        throw e;
+      }
       if (!stored.inserted) {
         emitMetricBestEffort(ctx, { event_type: 'metric.webhook.duplicate', level: 'warn', payload: { provider_code: 'asiapay' } });
       }
 
       // Queue async processing.
-      await enqueueWebhookJob(service, {
-        providerCode: 'asiapay',
-        providerEventId,
-        providerEventPk: stored.id,
-        jobKind: 'topup_webhook',
-        correlationId: ref,
-      });
+      try {
+        await enqueueWebhookJob(service, {
+          providerCode: 'asiapay',
+          providerEventId,
+          providerEventPk: stored.id,
+          jobKind: 'topup_webhook',
+          correlationId: ref,
+        });
+      } catch (e) {
+        if (claim.kind === 'claimed') await releaseWebhookIdempotencyClaim(claim);
+        throw e;
+      }
+
+      if (claim.kind === 'claimed') await markWebhookIdempotencyDone(claim);
 
       // Optional best-effort immediate processing.
       const scheduled = tryWaitUntil(runWebhookJobs(service, { limit: 1, hardMax: 1 }));

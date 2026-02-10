@@ -9,6 +9,7 @@ import { enqueueWebhookJob, runWebhookJobs } from '../_shared/webhookJobs.ts';
 import { tryWaitUntil } from '../_shared/background.ts';
 import { storeProviderEvent } from '../_shared/providerEvents.ts';
 import { requireFreshWebhookTimestamp } from '../_shared/webhookReplay.ts';
+import { claimWebhookIdempotency, markWebhookIdempotencyDone, releaseWebhookIdempotencyClaim } from '../_shared/webhookIdempotency.ts';
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -152,8 +153,21 @@ Deno.serve(async (req) => {
       const stableEventId = eventId || (await shaHex('SHA-256', raw));
       const providerEventId = `topup:${stableEventId}`;
 
-      // Durable inbox (idempotent). Insert after verification.
-      const stored = await storeProviderEvent(service, 'qicard', providerEventId, payload);
+      // Redis idempotency gate (fast prefilter before hitting Postgres).
+      const claim = await claimWebhookIdempotency({ providerCode: 'qicard', providerEventId });
+      if (claim.kind === 'duplicate') {
+        emitMetricBestEffort(ctx, { event_type: 'metric.webhook.duplicate_short_circuit', level: 'warn', payload: { provider_code: 'qicard' } });
+        return json({ ok: true, accepted: true, queued: false, duplicate: true, short_circuited: true }, 200, ctx.headers);
+      }
+
+      let stored: Awaited<ReturnType<typeof storeProviderEvent>>;
+      try {
+        // Durable inbox (idempotent). Insert after verification.
+        stored = await storeProviderEvent(service, 'qicard', providerEventId, payload);
+      } catch (e) {
+        if (claim.kind === 'claimed') await releaseWebhookIdempotencyClaim(claim);
+        throw e;
+      }
       const providerEventPk = stored.id;
       if (!stored.inserted) {
         emitMetricBestEffort(ctx, { event_type: 'metric.webhook.duplicate', level: 'warn', payload: { provider_code: 'qicard' } });
@@ -161,13 +175,22 @@ Deno.serve(async (req) => {
 
       // Queue async processing (fast 2xx response; worker does retries/backoff).
       if (intentId && isUuid(intentId)) {
-        const { queued } = await enqueueWebhookJob(service, {
-          providerCode: 'qicard',
-          providerEventId,
-          providerEventPk,
-          jobKind: 'topup_webhook',
-          correlationId: intentId,
-        });
+        let queued = false;
+        try {
+          const out = await enqueueWebhookJob(service, {
+            providerCode: 'qicard',
+            providerEventId,
+            providerEventPk,
+            jobKind: 'topup_webhook',
+            correlationId: intentId,
+          });
+          queued = Boolean((out as any)?.queued);
+        } catch (e) {
+          if (claim.kind === 'claimed') await releaseWebhookIdempotencyClaim(claim);
+          throw e;
+        }
+
+        if (claim.kind === 'claimed') await markWebhookIdempotencyDone(claim);
 
         // Optional: attempt immediate background processing (still safe/locked in DB).
         const scheduled = tryWaitUntil(runWebhookJobs(service, { limit: 1, hardMax: 1 }));
@@ -177,6 +200,7 @@ Deno.serve(async (req) => {
         return json({ ok: true, accepted: true, queued, duplicate: !stored.inserted }, 200, ctx.headers);
       }
 
+      if (claim.kind === 'claimed') await releaseWebhookIdempotencyClaim(claim);
       emitMetricBestEffort(ctx, { event_type: 'metric.webhook.ignored', payload: { provider_code: 'qicard', reason: 'missing_intent_id' } });
       return json({ ok: true, accepted: true, queued: false, reason: 'missing_intent_id' }, 200, ctx.headers);
     } catch (e) {
