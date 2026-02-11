@@ -16,6 +16,7 @@ const ROOT = process.cwd();
 const SCHEMA = path.join(ROOT, 'supabase', 'schema.sql');
 const MIGRATIONS_DIR = path.join(ROOT, 'supabase', 'migrations');
 const OUT_WEB = path.join(ROOT, 'apps', 'web', 'src', 'lib', 'database.types.ts');
+const OUT_APP = path.join(ROOT, 'apps', 'app', 'src', 'lib', 'supabase', 'database.types.ts');
 const OUT_EDGE = path.join(ROOT, 'supabase', 'functions', '_shared', 'database.types.ts');
 
 function readFile(p) {
@@ -338,8 +339,9 @@ function main() {
 
   const content = buildTypes({ enums, tables, functions });
   writeFile(OUT_WEB, content);
+  writeFile(OUT_APP, content);
   writeFile(OUT_EDGE, content);
-  console.log('✅ Generated database types:', OUT_WEB, OUT_EDGE);
+  console.log('Generated database types:', OUT_WEB, OUT_APP, OUT_EDGE);
 }
 
 main();
