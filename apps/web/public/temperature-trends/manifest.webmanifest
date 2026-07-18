@@ -1,0 +1,11 @@
+{
+  "name": "TempLens Pro",
+  "short_name": "TempLens",
+  "description": "Advanced weather history and forecast comparison dashboard.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#07131f",
+  "theme_color": "#07131f",
+  "icons": [{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
