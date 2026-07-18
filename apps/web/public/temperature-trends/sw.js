@@ -1,5 +1,9 @@
-const VERSION = 'templens-v2-20260718';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
+const VERSION = 'templens-v2-20260718-2';
+const SHELL = [
+  './', './index.html', './manifest.webmanifest', './icon.svg',
+  './payload-01.txt', './payload-02.txt', './payload-03.txt',
+  './payload-04.txt', './payload-05.txt', './payload-06.txt'
+];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(VERSION).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });
